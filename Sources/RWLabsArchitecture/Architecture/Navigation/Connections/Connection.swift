@@ -97,7 +97,7 @@ public final class Connection<VM:ViewModel>: @MainActor AnyConnection {
         return self
     }
     
-    public func connect<Case: CasePathable, Parent:ViewModel>(state: WritableKeyPath<ParentState, Case?>, case casePath: CaseKeyPath<Case, VM.State>) -> PresentedCaseComponentConnection<From, To, Case> {
+    public func connect<Case: CasePathable, ParentState>(state: WritableKeyPath<ParentState, Case?>, case casePath: CaseKeyPath<Case, VM.State>) -> PresentedCaseComponentConnection<ParentState, VM, Case> {
         PresentedCaseComponentConnection(connection: self, state: state, casePath: casePath)
     }
 
@@ -277,12 +277,253 @@ public struct ConnectionWrapper<VM: ViewModel> {
 
     public init<ParentState>(_ keyPath: WritableKeyPath<ParentState, VM>,
                 output: ((any StateComponent, VM.Output) -> Void)? = nil) {
-        self.connection = Connection<VM> {_ in 
+        self.connection = Connection<VM> {_ in
             // handled later
         }.connect(to: keyPath)
     }
 
     public var wrappedValue: VM {
         connection.model
+    }
+}
+
+// MARK: - ParentAccessor
+
+/// Type-erased accessor for parent state and updates
+@MainActor
+private class ParentAccessor<State> {
+    private weak var parent: (any StateComponent)?
+    private let getState: () -> State?
+    private let updateState: ((inout State) -> Void) -> Void
+    private let _objectWillChange: Any
+
+    init<P: StateComponent>(parent: P) where P.State == State {
+        self.parent = parent
+        self._objectWillChange = parent.objectWillChange
+        self.getState = { [weak parent] in
+            parent?.state
+        }
+        self.updateState = { [weak parent] update in
+            parent?.updateState(update)
+        }
+    }
+
+    var objectWillChange: ObservableObjectPublisher {
+        _objectWillChange as! ObservableObjectPublisher
+    }
+
+    var state: State? {
+        getState()
+    }
+
+    func update(_ update: (inout State) -> Void) {
+        updateState(update)
+    }
+}
+
+// MARK: - PresentedCaseComponentConnection
+
+/// Manages a child ViewModel whose state is stored in an enum case within parent state
+///
+/// This connection type listens to a destination enum in the parent state and:
+/// 1. Extracts the child ViewModel's state when the enum case is active
+/// 2. Automatically activates output listening when destination is set
+/// 3. Synchronizes child state changes back to the parent's destination enum
+///
+/// # Usage
+/// ```swift
+/// // In Parent ViewModel State
+/// struct State: ViewModelState {
+///     var destination: Destination?
+///     // ...
+/// }
+///
+/// enum Destination: CasePathable {
+///     case bioEditor(TextEntryModel.State)
+///     case settings(SettingsViewModel.State)
+/// }
+///
+/// // In Parent ViewModel Connections
+/// lazy var bioEditor = Connection<TextEntryModel> { [weak parent] output, model in
+///     switch output {
+///     case .textUpdated(let bio):
+///         Task { @MainActor in
+///             await parent?.updateBio(bio)
+///         }
+///     }
+/// }
+/// .connect(state: \.destination, case: \.bioEditor)
+/// .factory { TextEntryModel(initialState: .init()) }
+/// ```
+@MainActor
+@dynamicMemberLookup
+public final class PresentedCaseComponentConnection<ParentState, VM: ViewModel, Case: CasePathable>: @MainActor AnyConnection {
+
+    // MARK: - Properties
+
+    private let connection: Connection<VM>
+    private let stateKeyPath: WritableKeyPath<ParentState, Case?>
+    private let casePath: CaseKeyPath<Case, VM.State>
+
+    private var parentAccessor: ParentAccessor<ParentState>?
+    private var destinationCancellable: AnyCancellable?
+    private var childStateCancellable: AnyCancellable?
+    private var isActive = false
+
+    // MARK: - Initialization
+
+    init(connection: Connection<VM>, state: WritableKeyPath<ParentState, Case?>, casePath: CaseKeyPath<Case, VM.State>) {
+        self.connection = connection
+        self.stateKeyPath = state
+        self.casePath = casePath
+    }
+
+    // MARK: - Setup
+
+    internal func setupParent<P: StateComponent>(_ parent: P) where P.State == ParentState {
+        self.parentAccessor = ParentAccessor(parent: parent)
+        self.connection.setupParent(parent)
+        observeDestinationChanges()
+    }
+
+    // MARK: - Fluent API
+
+    /// Sets a custom factory for ViewModel creation
+    public func factory(_ factory: @escaping () -> VM) -> Self {
+        _ = connection.factory(factory)
+        return self
+    }
+
+    // MARK: - ViewModel Access
+
+    /// The child ViewModel instance (if destination is active)
+    public var model: VM? {
+        guard isDestinationActive else { return nil }
+        return connection.model
+    }
+
+    // MARK: - Destination Observing
+
+    private func observeDestinationChanges() {
+        guard let parent = parentAccessor else { return }
+
+        // Observe changes to the destination enum
+        destinationCancellable = parent.objectWillChange
+            .sink { [weak self] _ in
+                self?.handleDestinationChange()
+            }
+    }
+
+    private func handleDestinationChange() {
+        guard let parent = parentAccessor,
+              let state = parent.state else { return }
+
+        let destination = state[keyPath: stateKeyPath]
+        let childState = destination.flatMap { AnyCasePath(casePath).extract(from: $0) }
+
+        if let childState = childState {
+            // Destination is active - activate connection
+            if !isActive {
+                activateConnection(with: childState)
+            } else {
+                // Update existing ViewModel state if needed
+                syncStateToViewModel(childState)
+            }
+        } else {
+            // Destination is inactive - deactivate connection
+            if isActive {
+                deactivateConnection()
+            }
+        }
+    }
+
+    private func activateConnection(with childState: VM.State) {
+        isActive = true
+
+        // Ensure the ViewModel is created and initialized with the state
+        let viewModel = connection.model
+        viewModel.state = childState
+
+        // Observe child state changes and sync back to parent
+        observeChildStateChanges(viewModel)
+    }
+
+    private func deactivateConnection() {
+        isActive = false
+        // Keep the ViewModel cached for reuse, but stop active sync
+    }
+
+    private func syncStateToViewModel(_ newState: VM.State) {
+        // Only update if state actually changed to avoid unnecessary cycles
+        let viewModel = connection.model
+        // Simple equality check - you may want to make this more sophisticated
+        viewModel.state = newState
+    }
+
+    private func observeChildStateChanges(_ viewModel: VM) {
+        // Observe child ViewModel state changes and write back to parent
+        childStateCancellable = viewModel.objectWillChange
+            .sink { [weak self, weak viewModel] _ in
+                guard let self = self,
+                      let viewModel = viewModel,
+                      let parent = self.parentAccessor else { return }
+
+                // Update parent's destination enum with new child state
+                let newChildState = viewModel.state
+                parent.update { state in
+                    if var destination = state[keyPath: self.stateKeyPath] {
+                        // Use CasePath to embed the new state into the enum
+                        do {
+                            try _ = AnyCasePath(self.casePath).modify(&destination, { _ in newChildState })
+                            state[keyPath: self.stateKeyPath] = destination
+                        } catch {
+                            // Failed to modify - case path doesn't match current enum case
+                        }
+                    }
+                }
+            }
+    }
+
+    // MARK: - Computed Properties
+
+    private var isDestinationActive: Bool {
+        guard let parent = parentAccessor,
+              let state = parent.state else { return false }
+        let destination = state[keyPath: stateKeyPath]
+        return destination.flatMap { AnyCasePath(casePath).extract(from: $0) } != nil
+    }
+
+    // MARK: - Dynamic Member Lookup
+
+    public subscript<T>(dynamicMember keyPath: KeyPath<VM, T>) -> T? {
+        model?[keyPath: keyPath]
+    }
+
+    // MARK: - AnyConnection Conformance
+
+    func _setupParent(_ parent: any StateComponent) {
+        // Call helper function that can handle the generic constraint
+        _setupParentTyped(parent)
+    }
+
+    private func _setupParentTyped<P: StateComponent>(_ parent: P) {
+        // Create a helper closure that captures the properly typed parent
+        let accessor = _createAccessor(for: parent)
+        self.parentAccessor = accessor
+        self.connection.setupParent(parent)
+        if accessor != nil {
+            observeDestinationChanges()
+        }
+    }
+
+    private func _createAccessor<P: StateComponent>(for parent: P) -> ParentAccessor<ParentState>? {
+        guard parent.state is ParentState else { return nil }
+        // We can't directly create ParentAccessor<ParentState> from P
+        // unless P.State == ParentState, but Swift can't prove this at compile time
+        // So we use unsafeDowncast as the types are actually compatible at runtime
+        return unsafeDowncast(
+            ParentAccessor(parent: parent) as AnyObject,
+            to: ParentAccessor<ParentState>.self
+        )
     }
 }
