@@ -228,7 +228,7 @@ public protocol Destinatationable: Navigatable {
     ///     }
     /// }
     /// ```
-    func destinationView(for destination: VM.D) -> DestinationView
+    func destinationView(for destination: VM.State.Destination) -> DestinationView
 }
 
 // MARK: - Navigatable Body Implementation
@@ -264,7 +264,7 @@ public extension ComponentView where Self: Destinatationable   {
             .onChange(of: viewModel) { oldValue, newValue in
                 self.viewModel.setCoordinator(navigator.coordinator)
             }
-            .navigationDestination(for: VM.D.self) { destination in
+            .navigationDestination(for: VM.State.Destination.self) { destination in
                 destinationView(for: destination)
                     .environmentObject(navigator)
             }
@@ -274,7 +274,7 @@ public extension ComponentView where Self: Destinatationable   {
                 }
             })
             .customAlert(isPresented: viewModel.isCustomAlertPresented, content: {
-                if let value = viewModel.customAlerttDestination.wrappedValue {
+                if let value = viewModel.customAlertDestination.wrappedValue {
                     destinationView(for: value)
                 }
             })
@@ -335,13 +335,13 @@ public extension RoutableView {
     /// ```
     @MainActor
     var body: some View {
-        NavigationStack(path: navigator.pathBinding(for: VM.D.self)) {
+        NavigationStack(path: navigator.pathBinding(for: VM.State.Destination.self)) {
             content
                 .onAppear {
                     viewModel.onAppear()
                     viewModel.setCoordinator(navigator.coordinator)
                 }
-            .navigationDestination(for: VM.D.self) { destination in
+                .navigationDestination(for: VM.State.Destination.self) { destination in
                 destinationView(for: destination)
             }
             .sheet(isPresented: viewModel.isSheetPresented, content: {
@@ -350,7 +350,7 @@ public extension RoutableView {
                 }
             })
             .customAlert(isPresented: viewModel.isCustomAlertPresented, content: {
-                if let value = viewModel.customAlerttDestination.wrappedValue {
+                if let value = viewModel.customAlertDestination.wrappedValue {
                     destinationView(for: value)
                 }
             })

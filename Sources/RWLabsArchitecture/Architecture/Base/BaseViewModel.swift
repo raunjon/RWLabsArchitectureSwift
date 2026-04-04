@@ -47,11 +47,7 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
     
     public typealias C = BaseConnections<BaseViewModel>
     
-    public var navigationCoordinator: NavigationCoordinator = .init() {
-        didSet {
-            print("init")
-        }
-    }
+    public var navigationCoordinator: NavigationCoordinator = .init()
     
     public var cancellables = Set<AnyCancellable>()
     
@@ -60,10 +56,6 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
     required public init(initialState: State) {
         self.state = initialState
     }
-    
-    
-    public var pushDestination: Binding<D?> = .constant(nil)
-    
 
     /// Override this method to handle actions
     open func send(_ action: Action) {
@@ -162,9 +154,12 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
 }
 
 // MARK: - Empty Implementations
-public struct EmptyState: ViewModelState {    
+public struct EmptyState: ViewModelState {
+    public typealias Destination = EmptyDestination
+
     public var isLoading: Bool = false
     public var error: Error? = nil
+    public var destination: EmptyDestination? = nil
 
     public init() {}
 }

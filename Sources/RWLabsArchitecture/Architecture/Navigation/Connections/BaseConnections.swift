@@ -8,6 +8,7 @@
 
 import SwiftUI
 import Combine
+import CasePathsCore
 
 // MARK: - BaseConnections
 
@@ -85,11 +86,16 @@ import Combine
 open class BaseConnections<ParentViewModel: ViewModel>: @MainActor ViewModelConnections {
 
     // MARK: - Properties
+//    public typealias C1<From: ViewModelState, Case: CasePathable> = CaseConnection<From, ParentViewModel, Case>
 
     /// Weak reference to the parent ViewModel
     ///
     /// Automatically managed by BaseConnections to prevent retain cycles.
-    public weak var parent: ParentViewModel?
+    public weak var parent: ParentViewModel? {
+        didSet {
+            print("🔧 BaseConnections.parent didSet: \(parent != nil ? "set" : "nil")")
+        }
+    }
 
     // MARK: - Initialization
 
@@ -107,7 +113,33 @@ open class BaseConnections<ParentViewModel: ViewModel>: @MainActor ViewModelConn
 
     required public init(parent: ParentViewModel) {
         self.parent = parent
+
+        // Setup connections - subclasses should override setupConnections()
+        // to access their lazy connection properties, which will force evaluation
+        // and allow wireConnections() to find them
+        setupConnections()
+
+        // Now wire the connections that were accessed in setupConnections()
         wireConnections()
+    }
+
+    /// Override this method in subclasses to access lazy connection properties
+    /// This forces their evaluation so wireConnections() can find them.
+    ///
+    /// # Example
+    /// ```swift
+    /// override func setupConnections() {
+    ///     _ = entry  // Access the lazy var to force evaluation
+    ///     _ = filter
+    /// }
+    /// ```
+    ///
+    /// **Note**: This is only needed for connections using `.connect(state:case:)`
+    /// which return `PresentedCaseComponentConnection`. Regular `Connection` objects
+    /// will auto-wire themselves on first access.
+    open func setupConnections() {
+        // Default implementation does nothing
+        // Subclasses override to access their lazy connection properties
     }
     /// Helper to set up a connection with parent reference
     ///
@@ -120,23 +152,35 @@ open class BaseConnections<ParentViewModel: ViewModel>: @MainActor ViewModelConn
     ///     )
     /// }()
     /// ```
-    public func setup<VM>(_ connection: Connection<VM>) -> Connection<VM> where ParentViewModel: StateComponent {
+    public func setup<VM: ViewModel>(_ connection: Connection<VM>) -> Connection<VM> where ParentViewModel: ViewModel {
         if let parent = parent {
-            connection.setupParent(parent)
+            connection._setupParent(parent)
         }
         return connection
     }
     
     private func wireConnections() {
-        guard let parent = parent as? any StateComponent else { return }
+        guard let parent = parent as? any ViewModel else {
+            print("⚠️ BaseConnections.wireConnections: parent is not StateComponent")
+            return
+        }
+
+        print("🔍 BaseConnections.wireConnections: Starting wire connections for \(type(of: self))")
 
         let mirror = Mirror(reflecting: self)
 
+        var connectionCount = 0
         for child in mirror.children {
+            print("   Checking child: \(child.label ?? "unlabeled"), type: \(type(of: child.value))")
+
             if let connection = child.value as? AnyConnection {
+                connectionCount += 1
+                print("   ✅ Found AnyConnection #\(connectionCount): \(child.label ?? "unlabeled")")
                 connection._setupParent(parent)
             }
         }
+
+        print("🔍 BaseConnections.wireConnections: Found \(connectionCount) connections")
     }
 }
 

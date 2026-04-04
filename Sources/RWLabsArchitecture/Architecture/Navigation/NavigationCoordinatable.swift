@@ -13,40 +13,42 @@ import Combine
 /// Protocol for view models that participate in navigation coordination
 ///
 /// View models conforming to this protocol get automatic navigation capabilities
-/// including destination management, modal/alert presentation, and navigation bindings.
+/// including destination management through `state.destination`, modal/alert presentation,
+/// and navigation bindings.
 ///
 /// # Example
 /// ```swift
-/// class ProductViewModel: ViewModel, NavigationCoordinatable {
-///     typealias D = ProductDestination
+/// class ProductViewModel: BaseViewModel<State, Action, Output, Destination> {
+///     struct State: ViewModelState {
+///         var destination: Destination?
+///         // ... other state properties
+///     }
 ///
-///     var navigationCoordinator = NavigationCoordinator<ProductDestination>()
+///     enum Destination: RouteDestination {
+///         case detail(productId: String)
+///         case settings
+///     }
 ///
 ///     func showDetail(productId: String) {
-///         navigate(to: .detail(productId: productId))
+///         state.destination = .detail(productId: productId)
 ///     }
 /// }
 /// ```
-public protocol NavigationCoordinatable: ObservableObject {
-
-    // MARK: - Associated Type
-
-    /// The destination type for this view model's feature
-    associatedtype D: RouteDestination
+public protocol NavigationCoordinatable: StateComponent where State: ViewModelState {
 
     // MARK: - Required Properties
 
-    /// The current destination (read/write)
-    var destination: D? { get set }
-
     /// Binding for alert-style destinations
-    var alertDestination: Binding<D?> { get }
+    var alertDestination: Binding<State.Destination?> { get }
 
     /// Binding for custom alert-style destinations
-    var customAlerttDestination: Binding<D?> { get }
+    var customAlertDestination: Binding<State.Destination?> { get }
 
     /// Binding for modal-style destinations
-    var modalDestination: Binding<D?> { get }
+    var modalDestination: Binding<State.Destination?> { get }
+
+    /// Binding for push navigation destinations
+    var pushDestination: Binding<State.Destination?> { get }
 
     /// The navigation coordinator instance
     var navigationCoordinator: NavigationCoordinator { get set }
@@ -56,7 +58,7 @@ public protocol NavigationCoordinatable: ObservableObject {
     /// Sets the navigation coordinator
     /// - Parameter navigationCoordinator: The coordinator to use
     func setCoordinator(_ navigationCoordinator: NavigationCoordinator)
-    
+
     var isSheetPresented: Binding<Bool> { get }
     var isCustomAlertPresented: Binding<Bool> { get }
 }
@@ -73,137 +75,137 @@ public extension NavigationCoordinatable {
 
 // MARK: - ViewModel Integration
 
-/// Extension providing navigation integration for ViewModels
+/// Extension providing navigation integration for ViewModels using state-based destinations
 @MainActor
 public extension NavigationCoordinatable where Self: ViewModel, Self.ObjectWillChangePublisher == ObservableObjectPublisher {
-
-    // MARK: - Outputs
-
-    /// Default outputs publisher (empty for navigation-only view models)
-    var outputs: AnyPublisher<Output, Never> {
-        Empty().eraseToAnyPublisher()
-    }
-
-    // MARK: - Navigation
-
-    /// Navigates to a destination
-    ///
-    /// - Parameter destination: The destination to navigate to, or `nil` to do nothing
-    ///
-    /// # Example
-    /// ```swift
-    /// viewModel.navigate(to: .detail(productId: "123"))
-    /// ```
-    @MainActor
-    func navigate(to destination: D?) {
-        navigationCoordinator.navigate(to: destination)
-        objectWillChange.send()
-    }
-
-    /// The current navigation destination
-    ///
-    /// Reading returns the top of the navigation stack, or the initial destination if empty.
-    /// Setting navigates to the new destination.
-    var destination: D? {
-        get {
-            navigationCoordinator.currentDestination() as? D
-        }
-        set {
-            self.navigate(to: newValue)
-        }
-    }
 
     // MARK: - Alert Destination
 
     /// Binding for alert-style destinations
     ///
-    /// Use this binding to present system alerts:
+    /// Filters `state.destination` to only show destinations with `.alert` presentation style
+    ///
+    /// # Usage
     /// ```swift
     /// .alert(item: viewModel.alertDestination) { destination in
-    ///     // Configure alert
+    ///     // Configure alert based on destination
     /// }
     /// ```
-    var alertDestination: Binding<D?> {
-        .init {
-            self.navigationCoordinator.presentedDestinations?.presentationStyle == .alert
-            ? self.navigationCoordinator.presentedDestinations as? Self.D
-                : nil
-        } set: { newValue in
-            if self.navigationCoordinator.presentedDestinations == nil ||
-                self.navigationCoordinator.presentedDestinations?.presentationStyle == .alert {
-                self.navigationCoordinator.presentedDestinations = newValue
+    var alertDestination: Binding<State.Destination?> {
+        Binding(
+            get: {
+                guard let dest = self.state.destination,
+                      dest.presentationStyle == .alert else { return nil }
+                return dest
+            },
+            set: { newValue in
+                self.updateState { $0.destination = newValue }
             }
-        }
+        )
     }
 
     // MARK: - Custom Alert Destination
 
     /// Binding for custom alert-style destinations
     ///
-    /// Use this binding to present custom alert views:
+    /// Filters `state.destination` to only show destinations with `.customAlert` presentation style
+    ///
+    /// # Usage
     /// ```swift
-    /// .sheet(item: viewModel.customAlerttDestination) { destination in
+    /// .sheet(item: viewModel.customAlertDestination) { destination in
     ///     CustomAlertView(destination: destination)
     /// }
     /// ```
-    var customAlerttDestination: Binding<D?> {
-        .init {
-            self.navigationCoordinator.presentedDestinations?.presentationStyle == .customAlert
-            ? self.navigationCoordinator.presentedDestinations as? D
-                : nil
-        } set: { newValue in
-            if self.navigationCoordinator.presentedDestinations == nil ||
-                self.navigationCoordinator.presentedDestinations?.presentationStyle == .customAlert {
-                self.navigate(to: newValue)
+    var customAlertDestination: Binding<State.Destination?> {
+        Binding(
+            get: {
+                guard let dest = self.state.destination,
+                      dest.presentationStyle == .customAlert else { return nil }
+                return dest
+            },
+            set: { newValue in
+                self.updateState { $0.destination = newValue }
             }
-        }
+        )
     }
 
     // MARK: - Modal Destination
 
     /// Binding for modal-style destinations
     ///
-    /// Use this binding to present modal sheets:
+    /// Filters `state.destination` to only show destinations with `.modal` or `.fullScreen` presentation style
+    ///
+    /// # Usage
     /// ```swift
     /// .sheet(item: viewModel.modalDestination) { destination in
     ///     DestinationView(destination: destination)
     /// }
     /// ```
-    var modalDestination: Binding<D?> {
-        .init {
-            self.navigationCoordinator.presentedDestinations?.presentationStyle == .modal
-            ? self.navigationCoordinator.presentedDestinations as? D
-                : nil
-        } set: { [self] newValue in
-            if self.navigationCoordinator.presentedDestinations == nil ||
-                self.navigationCoordinator.presentedDestinations?.presentationStyle == .modal {
-                self.navigate(to: newValue)
-            }
-        }
-    }
-    
-    public var isSheetPresented: Binding<Bool> {
-           Binding(
-            get: { self.modalDestination.wrappedValue != nil },
-               set: { newValue in
-                   if !newValue {
-//                       self.modalDestination.wrappedValue = nil
-                   }
-               }
-           )
-       }
-    
-    public var isCustomAlertPresented: Binding<Bool> {
-           Binding(
+    var modalDestination: Binding<State.Destination?> {
+        Binding(
             get: {
-                self.customAlerttDestination.wrappedValue != nil
+                guard let dest = self.state.destination,
+                      dest.presentationStyle == .modal || dest.presentationStyle == .fullScreen else { return nil }
+                return dest
             },
-               set: { newValue in
-                   if !newValue {
-                       self.customAlerttDestination.wrappedValue = nil
-                   }
-               }
-           )
-       }
+            set: { newValue in
+                self.updateState { $0.destination = newValue }
+            }
+        )
+    }
 
+    // MARK: - Push Destination
+
+    /// Binding for push navigation destinations
+    ///
+    /// Filters `state.destination` to only show destinations with `.push` presentation style
+    ///
+    /// # Usage
+    /// ```swift
+    /// .navigationDestination(item: viewModel.pushDestination) { destination in
+    ///     DestinationView(destination: destination)
+    /// }
+    /// ```
+    var pushDestination: Binding<State.Destination?> {
+        Binding(
+            get: {
+                guard let dest = self.state.destination,
+                      dest.presentationStyle == .push else { return nil }
+                return dest
+            },
+            set: { newValue in
+                self.updateState { $0.destination = newValue }
+            }
+        )
+    }
+
+    // MARK: - Convenience Bindings
+
+    /// Boolean binding for sheet presentation
+    ///
+    /// Returns `true` when a modal destination is set, `false` otherwise
+    var isSheetPresented: Binding<Bool> {
+        Binding(
+            get: { self.modalDestination.wrappedValue != nil },
+            set: { newValue in
+                if !newValue {
+                    self.updateState { $0.destination = nil }
+                }
+            }
+        )
+    }
+
+    /// Boolean binding for custom alert presentation
+    ///
+    /// Returns `true` when a custom alert destination is set, `false` otherwise
+    var isCustomAlertPresented: Binding<Bool> {
+        Binding(
+            get: { self.customAlertDestination.wrappedValue != nil },
+            set: { newValue in
+                if !newValue {
+                    self.updateState { $0.destination = nil }
+                }
+            }
+        )
+    }
 }

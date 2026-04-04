@@ -52,13 +52,19 @@ import Combine
 /// - Must be a value type (struct preferred)
 /// - Must include `isLoading: Bool`
 /// - Must include `error: Error?`
+/// - Must include `destination: Destination?` where Destination conforms to RouteDestination
 public protocol ViewModelState {
+    /// The destination type for navigation
+    associatedtype Destination: RouteDestination
+
     /// Indicates whether an async operation is in progress
     var isLoading: Bool { get set }
 
     /// The current error, if any
     var error: Error? { get set }
-    
+
+    /// The current navigation destination
+    var destination: Destination? { get set }
 }
 
 // MARK: - ViewModelAction Protocol

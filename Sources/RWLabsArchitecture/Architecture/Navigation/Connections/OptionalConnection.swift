@@ -32,7 +32,7 @@ public final class OptionalConnection<VM: ViewModel>: @MainActor AnyConnection {
     private var cachedViewModel: VM?
 
     /// Weak reference to parent to avoid retain cycles
-    private weak var parentRef: (any StateComponent)?
+    private weak var parentRef: (any ViewModel)?
 
     // MARK: - Initialization
 
@@ -68,13 +68,13 @@ public final class OptionalConnection<VM: ViewModel>: @MainActor AnyConnection {
         return self
     }
     
-    public func connect<Parent:StateComponent>(from parent: Parent?,
+    public func connect<Parent:ViewModel>(from parent: Parent?,
                                                to keyPath: WritableKeyPath<Parent.State, VM?>
     ) -> Self {
         return connect(to: keyPath).attach(parent)
     }
     
-    public func attach<Parent:StateComponent>(_ parent: Parent?) -> Self    {
+    public func attach<Parent:ViewModel>(_ parent: Parent?) -> Self    {
         guard let parent else { return self }
         self.setupParent(parent)
         return self
@@ -158,7 +158,7 @@ public final class OptionalConnection<VM: ViewModel>: @MainActor AnyConnection {
     // MARK: - Internal Setup
 
     /// Called by BaseConnections to inject parent reference
-    internal func setupParent<Parent: StateComponent>(_ parent: Parent) {
+    internal func setupParent<Parent: ViewModel>(_ parent: Parent) {
         self.parentRef = parent
     }
 
@@ -174,7 +174,7 @@ public final class OptionalConnection<VM: ViewModel>: @MainActor AnyConnection {
     }
 
     /// Sets up closures to interact with parent state using the provided keyPath
-    private func setupAccessors<Parent: StateComponent>(
+    private func setupAccessors<Parent: ViewModel>(
         parent: Parent,
         keyPath: AnyKeyPath
     ) {
@@ -212,8 +212,8 @@ public final class OptionalConnection<VM: ViewModel>: @MainActor AnyConnection {
         vm.onOutput(outputHandler)
     }
     
-    func _setupParent(_ parent: any StateComponent) {
-        if let parent = parent as? any StateComponent {
+    func _setupParent(_ parent: any ViewModel) {
+        if let parent = parent as? any ViewModel {
             self.setupParent(parent)
         }
     }
