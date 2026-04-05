@@ -35,15 +35,16 @@ import Combine
 ///     }
 /// }
 /// ```
+/// 
 public protocol RouteDestination: Hashable, Identifiable, Equatable {
 
     // MARK: - Required Properties
 
     /// Unique identifier for the feature this destination belongs to
-    static var featureId: String { get }
+//    static var featureId: String { get }
 
     /// The initial/default destination for this feature
-    static var initialDestination: Self { get }
+//    static var initialDestination: Self { get }
 
     /// How this destination should be presented
     var presentationStyle: PresentationStyle { get }
@@ -146,9 +147,6 @@ public struct AnyDestination: Hashable, Identifiable {
     /// Unique identifier for this destination instance
     public let id: String
 
-    /// Feature identifier this destination belongs to
-    public let featureId: String
-
     /// How this destination should be presented
     public let presentationStyle: PresentationStyle
 
@@ -167,7 +165,6 @@ public struct AnyDestination: Hashable, Identifiable {
     /// - Parameter destination: The concrete destination to wrap
     public init<D: RouteDestination>(_ destination: D) {
         self.id = String(describing: destination)
-        self.featureId = D.featureId
         self.presentationStyle = destination.presentationStyle
         self.metadata = destination.metadata
         self.base = destination
@@ -182,11 +179,10 @@ public struct AnyDestination: Hashable, Identifiable {
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
-        hasher.combine(featureId)
     }
 
     public static func == (lhs: AnyDestination, rhs: AnyDestination) -> Bool {
-        lhs.id == rhs.id && lhs.featureId == rhs.featureId
+        lhs.id == rhs.id
     }
 
     // MARK: - Type Casting

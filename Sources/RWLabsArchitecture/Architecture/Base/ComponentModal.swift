@@ -111,7 +111,7 @@ import Combine
 /// - **Cancellable Storage**: Built-in storage for Combine subscriptions
 ///
 @MainActor
-open class ComponentModal<State: ViewModelState, Action: ViewModelAction, Output: ViewModelOutput>: @MainActor ViewModel, @MainActor ActionableComponent, @MainActor OutputableComponent, Equatable, @MainActor Hashable {
+open class ComponentModal<State: ViewModelState, Action: ViewModelAction, Output: ViewModelOutput>: @MainActor ViewModel, @MainActor ActionableComponent, @MainActor OutputableComponent, Equatable, @MainActor Hashable {    
     
     // MARK: - Properties
 

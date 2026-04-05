@@ -3,7 +3,7 @@
 //  RWLabsArchitecture
 //
 //  Fluent API for managing state-mapped child ViewModels
-//  Clean syntax: Connection<VM> { output }.connect(state: \.destination, case: \.myCase)
+//  Clean syntax: Connection<To> { output }.connect(state: \.destination, case: \.myCase)
 //
 
 import SwiftUI
@@ -40,25 +40,34 @@ protocol AnyConnection: AnyObject {
 /// ```
 @MainActor
 @dynamicMemberLookup
-public final class Connection<VM: ViewModel>: @MainActor AnyConnection {
+public final class Connection<To: ViewModel>: @MainActor AnyConnection {
 
     // MARK: - Properties
 
-    private let outputHandler: ((VM.Output) -> Void)?
-    private var factoryClosure: (() -> VM)?
+    private let outputHandler: ((To.Output) -> Void)?
+    private var factoryClosure: (() -> To)?
 
     private weak var parentViewModel: (any ViewModel)?
-    private var cachedViewModel: VM?
+    private var cachedViewModel: To? {
+        didSet {
+            if cachedViewModel == nil {
+                self.isActive = false
+                self.clearData()
+            }
+        }
+    }
 
     // Observation
     private var stateCancellable: AnyCancellable?
     private var childStateCancellable: AnyCancellable?
+    private var outputCancellable: AnyCancellable?
     private var isActive = false
+    var clearData: () -> Void = {}
 
     // MARK: - Initialization
 
     /// Creates a Connection with output handler
-    public init(outputHandler: @escaping (VM.Output) -> Void) {
+    public init(outputHandler: @escaping (To.Output) -> Void) {
         self.outputHandler = outputHandler
     }
 
@@ -74,7 +83,7 @@ public final class Connection<VM: ViewModel>: @MainActor AnyConnection {
     /// ```swift
     /// .factory { EntryViewModel(initialState: .init()) }
     /// ```
-    public func factory(_ factory: @escaping () -> VM) -> Self {
+    public func factory(_ factory: @escaping () -> To) -> Self {
         self.factoryClosure = factory
         return self
     }
@@ -86,8 +95,8 @@ public final class Connection<VM: ViewModel>: @MainActor AnyConnection {
     /// ```
     public func connect<From: ViewModel, Case: CasePathable>(
         state stateKeyPath: WritableKeyPath<From.State, Case?>,
-        case casePath: CaseKeyPath<Case, VM.State>, parent: From?
-    ) -> CaseConnection<From, VM, Case> {
+        case casePath: CaseKeyPath<Case, To.State>, parent: From?
+    ) -> CaseConnection<From, To, Case> {
         return CaseConnection(
             connection: self,
             stateKeyPath: stateKeyPath,
@@ -95,12 +104,36 @@ public final class Connection<VM: ViewModel>: @MainActor AnyConnection {
             parent: parent
         )
     }
+    public func connect1<From: ViewModel, Case: CasePathable>(
+        state stateKeyPath: WritableKeyPath<From.State, Case?>,
+        case casePath: CaseKeyPath<Case, To.State>, parent: From?
+    ) -> To? {
+        return CaseConnection(
+            connection: self,
+            stateKeyPath: stateKeyPath,
+            casePath: casePath,
+            parent: parent
+        ).model
+    }
 
     // MARK: - ViewModel Access
 
+    
+    public var bindingModel: Binding<To?> {
+        .init {
+            self.model
+        } set: { [weak self] model in
+            guard let self = self else { return }
+            self.model = model
+        }
+    }
     /// The child ViewModel instance (if active)
-    public var model: VM? {
-        return cachedViewModel
+    public var model: To? {
+        get {
+            return cachedViewModel
+        } set {
+            cachedViewModel = newValue
+        }
     }
 
     // MARK: - Lifecycle
@@ -110,12 +143,13 @@ public final class Connection<VM: ViewModel>: @MainActor AnyConnection {
         cachedViewModel = nil
         isActive = false
         childStateCancellable?.cancel()
+        outputCancellable?.cancel()
     }
 
     // MARK: - Dynamic Member Lookup
 
     /// Transparent access to ViewModel members
-    public subscript<T>(dynamicMember keyPath: KeyPath<VM, T>) -> T? {
+    public subscript<T>(dynamicMember keyPath: KeyPath<To, T>) -> T? {
         model?[keyPath: keyPath]
     }
 
@@ -125,7 +159,7 @@ public final class Connection<VM: ViewModel>: @MainActor AnyConnection {
         self.parentViewModel = parent
     }
 
-    fileprivate func createOrGetViewModel(with childState: VM.State) -> VM {
+    fileprivate func createOrGetViewModel(with childState: To.State) -> To {
         if let cached = cachedViewModel {
             return cached
         }
@@ -135,13 +169,13 @@ public final class Connection<VM: ViewModel>: @MainActor AnyConnection {
 
         // Bind output handler if provided
         if let outputHandler = outputHandler {
-            vm.onOutput(outputHandler)
+            outputCancellable = vm.outputs.sink(receiveValue: outputHandler)
         }
 
         return vm
     }
 
-    private func createViewModel(with childState: VM.State) -> VM {
+    private func createViewModel(with childState: To.State) -> To {
         return .init(initialState: childState)
     }
 }
@@ -194,6 +228,10 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
     private var childStateCancellable: AnyCancellable?
     private var isActive = false
 
+    // MARK: - ViewModel Access
+
+    
+    public var bindingModel: Binding<To?>!
     // MARK: - Initialization
 
     init(
@@ -207,6 +245,19 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
         self.casePath = casePath
         if let parent {
             self._setupParent(parent)
+        }
+        self.bindingModel = .init {
+                self.model
+            } set: { [weak self] model in
+                guard let self = self else { return }
+                if model == nil {
+                    // User navigated back - clear the parent's destination
+                    self.clearParentDestination()
+                }
+                self.model = model
+            }
+        self.connection.clearData = {
+            self.clearParentDestination()
         }
     }
 
@@ -222,8 +273,32 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
 
     /// The child ViewModel instance (if destination case is active)
     public var model: To? {
-        guard isActive else { return nil }
-        return connection.model
+        get {
+            // First check if we need to sync from parent state immediately
+            syncFromParentIfNeeded()
+
+            guard isActive else { return nil }
+            return connection.model
+        } set {
+            connection.model = newValue
+        }
+    }
+
+    /// Immediately syncs from parent state if destination is set but connection is not active
+    private func syncFromParentIfNeeded() {
+        guard !isActive,
+              let parent = parentViewModel,
+              let parentState = parent.state as? From.State else {
+            return
+        }
+
+        let destination = parentState[keyPath: stateKeyPath]
+        let childState = destination.flatMap { AnyCasePath(self.casePath).extract(from: $0) }
+
+        if let childState = childState {
+            print("🔧 CaseConnection: Syncing immediately on model access")
+            activateConnection(with: childState)
+        }
     }
 
     // MARK: - Dynamic Member Lookup
@@ -234,37 +309,40 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
 
     // MARK: - AnyConnection
 
-    func _setupParent(_ parent: (any ViewModel)) {
-        guard parent.state is From.State else {
-            print("⚠️ CaseConnection: Parent state type mismatch")
+    func _setupParent(_ parent: any ViewModel) {
+        guard let typedParent = parent as? From else {
+            print("⚠️ CaseConnection: Parent type mismatch")
             return
         }
 
-        self.parentViewModel = parent
-        self.connection._setupParent(parent)
+        self.parentViewModel = typedParent
+        self.connection._setupParent(typedParent)
 
         // Set up observation using generic helper to capture concrete type
-        setupObservation(for: parent)
+        setupObservation(for: typedParent)
     }
 
     // MARK: - State Observation
 
     private func setupObservation<P: ViewModel>(for parent: P) {
-        // Now we have the concrete type, so objectWillChange works properly
+        // Observe objectWillChange but handle it after the state changes
         stateCancellable = parent.objectWillChange
             .sink { [weak self] _ in
-                Task { @MainActor [weak self] in
+                // State changes happen synchronously, we just need to handle them after
+                // the current run loop iteration completes
+                DispatchQueue.main.async {
                     self?.handleParentStateChange()
                 }
             }
 
-        // Check initial state
+        // Check initial state immediately
         handleParentStateChange()
     }
 
     private func handleParentStateChange() {
         guard let parent = parentViewModel,
               let parentState = parent.state as? From.State else {
+            print("⚠️ CaseConnection: Parent or state not available")
             return
         }
 
@@ -277,13 +355,16 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
         if let childState = childState {
             // Case is active - activate or update connection
             if !isActive {
+                print("✅ CaseConnection: Activating connection")
                 activateConnection(with: childState)
             } else {
+                print("🔄 CaseConnection: Syncing state to existing connection")
                 syncStateToViewModel(childState)
             }
         } else {
             // Case is inactive - deactivate connection
             if isActive {
+                print("❌ CaseConnection: Deactivating connection")
                 deactivateConnection()
             }
         }
@@ -297,7 +378,7 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
 
         // Set the state
         viewModel.state = childState
-
+        
         // Observe child state changes
         observeChildStateChanges(viewModel)
     }
@@ -309,7 +390,8 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
 
     private func syncStateToViewModel(_ newState: To.State) {
         guard let viewModel = connection.model else { return }
-
+        guard viewModel.state != newState else { return }
+        guard newState.destination != nil else { return }
         // Only update if state is different to avoid cycles
         // Simple approach: always update (ViewModel can optimize internally)
         viewModel.state = newState
@@ -317,9 +399,12 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
 
     private func observeChildStateChanges(_ viewModel: To) {
         // Observe child ViewModel state changes and sync back to parent
+        // We need to observe objectWillChange since we can't access $state on the protocol
+        // But we'll handle it synchronously by checking state immediately in the handler
         childStateCancellable = viewModel.objectWillChange
             .sink { [weak self] _ in
-                Task { @MainActor [weak self] in
+                // Use DispatchQueue.main.async to ensure state has actually changed
+                DispatchQueue.main.async {
                     self?.syncChildStateToParent()
                 }
             }
@@ -363,6 +448,30 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
             // Case path doesn't match current enum case - this is normal
         }
     }
+
+    /// Clears the parent's destination (sets it to nil)
+    /// Called when SwiftUI's navigationDestination binding is set to nil on back navigation
+    private func clearParentDestination() {
+        guard let parent = parentViewModel else { return }
+
+        // Use generic helper to properly update parent state
+        clearParentDestinationState(parent)
+    }
+
+    private func clearParentDestinationState<P: ViewModel>(_ parent: P) {
+        guard var parentState = parent.state as? From.State else { return }
+
+        // Set destination to nil
+        parentState[keyPath: stateKeyPath] = nil
+
+        // Update using the proper typed method
+        parent.updateState { state in
+            if var typedState = state as? From.State {
+                typedState[keyPath: stateKeyPath] = nil
+                state = typedState as! P.State
+            }
+        }
+    }
 }
 
 // MARK: - Helper Extensions
@@ -375,3 +484,4 @@ extension StateComponent {
         state = newState
     }
 }
+

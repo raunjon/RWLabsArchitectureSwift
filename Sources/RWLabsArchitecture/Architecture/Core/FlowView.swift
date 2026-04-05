@@ -299,10 +299,257 @@ import SwiftUI
 /// - **Leaf Views**: Views that never navigate elsewhere (use plain `View`)
 /// - **Simple Dialogs**: Views shown only as alerts/sheets without navigation
 /// - **Reusable Components**: Generic UI components (buttons, labels, etc.)
-public protocol RoutableView: BaseView, Navigatable, Destinatationable {}
-public protocol ComponentView: BaseView {
-    var title: String {get}
+public protocol RoutableView: BaseView {}
+public protocol ComponentView: BaseView {}
+
+public protocol Destinatationable: BaseView {
+    /// The destination view type returned by `destinationView(for:)`
+    associatedtype DestinationView: View
+
+    /// The ViewModel type (must support navigation coordination)
+//    associatedtype VM: ViewModel & NavxigationCoordinatable
+
+    /// Creates the view for a given destination
+    ///
+    /// Called by NavigationStack when navigating to a destination.
+    /// Should create and configure the destination view with its ViewModel.
+    ///
+    /// - Parameter destination: The destination to navigate to
+    /// - Returns: The view to display for this destination
+    ///
+    /// # Example
+    /// ```swift
+    /// func destinationView(for destination: VM.D) -> some View {
+    ///     switch destination {
+    ///     case .detail(let id):
+    ///         DetailView(
+    ///             viewModel: viewModel.connections.createDetail(id),
+    ///             navigator: navigator
+    ///         )
+    ///     }
+    /// }
+    /// ```
+    func destinationView(for destination: VM.State.Destination) -> DestinationView
 }
+
+// MARK: - Navigatable Body Implementation
+
+public extension ComponentView where Self: Destinatationable   {
+    var body: some View {
+        content
+            .onAppear {
+                viewModel.onAppear()
+            }
+//            .showDestination(dest: viewModel.destination, destView: { dest in
+//                destinationView(for: dest)
+//            })
+//            .navigationDestination(for: VM.State.Destination.self) { destination in
+//                destinationView(for: destination)
+//                    .environmentObject(navigator)
+//            }
+            
+        
+    }
+    
+
+}
+
+extension View {
+    public func showDestination<D:RouteDestination>(dest: Binding<D?>,  destView: @escaping (D) -> some View) -> AnyView {
+        switch dest.wrappedValue?.presentationStyle {
+            case .push:
+                AnyView(self
+                    .navigationDestination(item: dest) { dest in
+                        destView(dest)
+//                        destinationView(for: dest)
+                    })
+//                    .anyView()
+            case .customAlert:
+                AnyView(self
+                    .customAlert(isPresented: dest.isPresent()) {
+                        if let dest = dest.wrappedValue {
+                            destView(dest)
+                        }
+                    }
+                )
+            default:
+            AnyView(
+                self
+                    .sheet(item: dest) { dest in
+                        destView(dest)
+                    }
+                )
+        }
+    }
+    
+    func anyView() {
+        AnyView(self)
+    }
+}
+extension Binding {
+  /// Creates a binding by projecting the current optional value to a boolean describing if it's
+  /// non-`nil`.
+  ///
+  /// Writing `false` to the binding will `nil` out the base value. Writing `true` does nothing.
+  ///
+  /// - Returns: A binding to a boolean. Returns `true` if non-`nil`, otherwise `false`.
+  public func isPresent<Wrapped>() -> Binding<Bool>
+  where Value == Wrapped? {
+    self._isPresent
+  }
+}
+
+extension Optional {
+  fileprivate var _isPresent: Bool {
+    get { self != nil }
+    set {
+      guard !newValue else { return }
+      self = nil
+    }
+  }
+}
+
+public extension RoutableView {
+    /// Body implementation providing NavigationStack with routing
+    ///
+    /// This implementation:
+    /// 1. Wraps content in NavigationStack
+    /// 2. Binds to navigator's path for navigation state
+    /// 3. Calls `viewModel.onAppear()` and `viewModel.setCoordinator()`
+    /// 4. Configures `.navigationDestination` for push navigation
+    /// 5. Configures `.sheet` for modal presentation
+    /// 6. Configures `.alert` for alert presentation
+    ///
+    /// # Navigation Bindings
+    ///
+    /// - **Path**: Bound to navigator's path for push navigation
+    /// - **Modal**: Bound to viewModel's modalDestination for sheets
+    /// - **Alert**: Bound to viewModel's alertDestination for alerts
+    ///
+    /// # Lifecycle
+    ///
+    /// On view appear:
+    /// 1. `viewModel.onAppear()` - Initialize data, analytics, etc.
+    /// 2. `viewModel.setCoordinator()` - Connect ViewModel to navigation
+    ///
+    /// # Example Flow
+    ///
+    /// ```
+    /// View appears
+    ///     ↓
+    /// NavigationStack created with path binding
+    ///     ↓
+    /// content rendered
+    ///     ↓
+    /// .onAppear fires
+    ///     ↓
+    /// viewModel.onAppear() called
+    /// viewModel.setCoordinator() called
+    ///     ↓
+    /// User taps → navigate(to:)
+    ///     ↓
+    /// Path updates
+    ///     ↓
+    /// .navigationDestination fires
+    ///     ↓
+    /// destinationView(for:) called
+    ///     ↓
+    /// New view pushed
+    /// ```
+    @MainActor
+    var body: some View {
+        NavigationStack {
+            content
+                .onAppear {
+                    viewModel.onAppear()
+                }
+        }
+    }
+}
+
+// MARK: - Architecture Notes
+
+/*
+ # Design Rationale
+
+ ## Protocol Composition
+
+ Navigatable is designed to compose with BaseView:
+
+ ```swift
+ BaseView alone:
+ - ViewModel integration
+ - Content separation
+ - Lifecycle (onAppear)
+
+ Navigatable alone:
+ - Navigator integration
+ - Destination routing
+ (Can't work without BaseView - needs content)
+
+ BaseView + Navigatable (ComponentView):
+ - Full-featured component
+ - ViewModel + Navigation
+ - Complete lifecycle + routing
+ ```
+
+ ## Type-Safe Routing
+
+ By requiring `destinationView(for:)` to switch on enum destinations,
+ we ensure:
+ - Compile-time checking of all routes
+ - No typos or invalid string paths
+ - Exhaustive handling of destinations
+ - Clear documentation of navigation graph
+
+ ## Navigator Passing
+
+ The navigator is passed explicitly (not injected) to:
+ - Make navigation dependencies visible
+ - Enable testing with mock navigators
+ - Allow multiple navigators in complex hierarchies
+ - Clarify which view controls which routes
+
+ ## Coordinator Integration
+
+ The automatic `setCoordinator()` call connects the ViewModel to
+ navigation capabilities, enabling:
+ - viewModel.navigate(to:)
+ - viewModel.dismiss()
+ - viewModel.popToRoot()
+ - Programmatic navigation from ViewModels
+
+ ## Body Override
+
+ When a view conforms to both BaseView and Navigatable, this body
+ implementation takes precedence over BaseView's default body.
+
+ This is intentional - navigation wrapping should be the outermost layer:
+ ```
+ NavigationStack
+     └─ content
+         └─ .onAppear { viewModel.onAppear() }
+ ```
+
+ Not:
+ ```
+ content
+     └─ .onAppear { viewModel.onAppear() }
+         └─ NavigationStack (wrong!)
+ ```
+
+ ## Presentation Styles
+
+ The three presentation types (push, modal, alert) cover all
+ common navigation patterns:
+
+ - **Push** (.navigationDestination): Hierarchical navigation
+ - **Modal** (.sheet): Temporary tasks, forms, detail views
+ - **Alert** (.alert): Confirmations, errors, simple choices
+
+ Each has its own SwiftUI modifier and binding.
+ */
+
 
 // MARK: - Future Extensions
 

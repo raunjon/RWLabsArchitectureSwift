@@ -8,6 +8,7 @@
 
 import Foundation
 import Combine
+import SwiftUI
 
 // MARK: - ViewModelState Protocol
 
@@ -53,9 +54,9 @@ import Combine
 /// - Must include `isLoading: Bool`
 /// - Must include `error: Error?`
 /// - Must include `destination: Destination?` where Destination conforms to RouteDestination
-public protocol ViewModelState {
+public protocol ViewModelState: Hashable {
     /// The destination type for navigation
-    associatedtype Destination: RouteDestination
+    associatedtype Destination: Identifiable
 
     /// Indicates whether an async operation is in progress
     var isLoading: Bool { get set }
@@ -65,6 +66,16 @@ public protocol ViewModelState {
 
     /// The current navigation destination
     var destination: Destination? { get set }
+}
+
+extension ViewModelState {
+    public static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.destination?.id == rhs.destination?.id
+    }
+    
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(self.destination?.id)
+    }
 }
 
 // MARK: - ViewModelAction Protocol
@@ -288,6 +299,7 @@ public protocol ViewModelOutput {}
 /// - `send(_:)`: Action handler
 /// - `outputs`: Publisher for side effects
 /// - `init(initialState:)`: Required initializer
+///
 public protocol ViewModel: StateComponent, Identifiable, Equatable {
     /// The State type for this ViewModel
     associatedtype State: ViewModelState
@@ -297,6 +309,8 @@ public protocol ViewModel: StateComponent, Identifiable, Equatable {
 
     /// The Output type for this ViewModel
     associatedtype Output: ViewModelOutput
+    
+//    var destination: Binding<State.Destination?> { get }
 
     /// The current state of the ViewModel
     ///

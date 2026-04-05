@@ -126,9 +126,6 @@ public final class FlowCoordinator: ObservableObject {
         // Emit command for platform handling
         commandSubject.send(.setRootFlow(flow, animated: animated))
 
-        // Navigate to initial destination
-        newContext.navigateToInitial(animated: animated)
-
         print("✅ Set root flow: \(flow.id)")
     }
 
@@ -189,9 +186,6 @@ public final class FlowCoordinator: ObservableObject {
         // Emit command
         commandSubject.send(.replaceFlow(flow, animated: animated))
 
-        // Navigate to initial destination
-        newContext.navigateToInitial(animated: animated)
-
         print("✅ Replaced flow with: \(flow.id)")
     }
 
@@ -220,9 +214,6 @@ public final class FlowCoordinator: ObservableObject {
 
         // Emit command
         commandSubject.send(.resetToRoot(animated: animated))
-
-        // Navigate to root flow's initial destination
-        rootContext.navigateToInitial(animated: animated)
 
         print("✅ Reset to root flow: \(rootContext.flow.id)")
     }

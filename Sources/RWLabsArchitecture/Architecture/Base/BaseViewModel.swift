@@ -31,9 +31,8 @@ extension OutputableComponent where Self: AnyObject {
 // MARK: - Base ViewModel Implementation
 /// Base class providing common ViewModel functionality
 @MainActor
-open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output: ViewModelOutput, Destination: RouteDestination>: @MainActor @preconcurrency ViewModel, @MainActor OutputableComponent, @MainActor NavigationCoordinatable, @preconcurrency Equatable, @preconcurrency Hashable, @MainActor StateComponent {
-    public typealias D = Destination
-    
+open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output: ViewModelOutput>: @MainActor @preconcurrency ViewModel, @MainActor OutputableComponent, @preconcurrency Equatable, @preconcurrency Hashable, @MainActor StateComponent {
+    public typealias Destination = State.Destination
     
     public let id: UUID = UUID()
 
@@ -44,14 +43,18 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
     public var outputs: AnyPublisher<Output, Never> {
         outputSubject.eraseToAnyPublisher()
     }
-    
-    public typealias C = BaseConnections<BaseViewModel>
-    
-    public var navigationCoordinator: NavigationCoordinator = .init()
-    
+        
     public var cancellables = Set<AnyCancellable>()
     
     public var outputHandler: ((Output) -> Void)?
+        
+    public var destination: Destination? {
+        get {
+            self.state.destination
+        } set {
+            self.state.destination = newValue
+        }
+    }
     
     required public init(initialState: State) {
         self.state = initialState
@@ -109,7 +112,7 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
         return self
     }
     
-    public static func == (lhs: BaseViewModel<State, Action, Output, Destination>, rhs: BaseViewModel<State, Action, Output, Destination>) -> Bool {
+    public static func == (lhs: BaseViewModel<State, Action, Output>, rhs: BaseViewModel<State, Action, Output>) -> Bool {
         lhs.id == rhs.id
     }
     

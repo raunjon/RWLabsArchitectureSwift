@@ -67,11 +67,6 @@ extension TabFlow {
 /// Navigation flows have their own navigation coordinator for managing
 /// the navigation stack within that flow.
 public protocol NavigationFlow: Flow {
-    /// The navigation coordinator type for this flow
-    associatedtype Coordinator: NavigationCoordinator
-
-    /// The navigation coordinator instance
-    var navigationCoordinator: Coordinator { get }
 }
 
 // MARK: - Flow Activation Mode
@@ -102,38 +97,12 @@ public enum FlowActivationMode: Equatable {
 /// - **Lifecycle**: Each flow can validate entry and perform cleanup on exit
 /// - **Flexible**: Supports both exclusive and concurrent subflow activation
 ///
-/// # Example
-/// ```swift
-/// class OnboardingFlow: NavigationFlow {
-///     typealias Destination = OnboardingDestination
-///
-///     var id: String { "onboarding" }
-///     static var initialDestination: OnboardingDestination { .welcome }
-///     var navigationCoordinator = NavigationCoordinator<OnboardingDestination>()
-///
-///     func canEnter() -> Bool {
-///         !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
-///     }
-///
-///     func onExit() {
-///         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
-///     }
-/// }
-/// ```
+
 public protocol Flow: Identifiable, ObservableObject where ID == String {
-
-    // MARK: - Associated Types
-
-    /// The destination type for this flow's navigation
-    associatedtype Destination: RouteDestination
-
     // MARK: - Required Properties
 
     /// Unique identifier for the flow
     var id: String { get }
-
-    /// The initial destination to navigate to when entering this flow
-    static var initialDestination: Destination { get }
 
     /// Child flows that can be entered from this flow
     var subflows: [any Flow] { get }
@@ -166,10 +135,7 @@ public protocol Flow: Identifiable, ObservableObject where ID == String {
 // MARK: - Flow Default Implementations
 
 extension Flow {
-    /// Default implementation returns the destination's initial destination
-    public static var initialDestination: Destination {
-        .initialDestination
-    }
+
 }
 
 extension Flow {
@@ -335,7 +301,6 @@ public struct FlowTransition: Identifiable, Equatable {
 public class AnyFlow<F: Flow>: Flow, Equatable {
 
     public let id: String
-    private let _initialDestination: () -> F.Destination
     private let _subflows: () -> [any Flow]
     private let _activationMode: () -> FlowActivationMode
     private let _canEnter: () -> Bool
@@ -343,15 +308,10 @@ public class AnyFlow<F: Flow>: Flow, Equatable {
 
     public init(_ flow: F) {
         self.id = flow.id
-        self._initialDestination = { F.initialDestination }
         self._subflows = { flow.subflows }
         self._activationMode = { flow.activationMode }
         self._canEnter = { flow.canEnter() }
         self._onExit = { flow.onExit() }
-    }
-
-    public static var initialDestination: F.Destination {
-        F.initialDestination
     }
 
     public var subflows: [any Flow] {
@@ -545,14 +505,6 @@ public final class FlowContext: ObservableObject, @MainActor Identifiable {
     }
 
     // MARK: - Navigation Helpers (Placeholder)
-
-    /// Navigate to the initial destination of this flow
-    /// - Parameter animated: Whether to animate the navigation
-    ///
-    /// **Note**: Implementation commented out pending refactoring
-    public func navigateToInitial(animated: Bool = true) {
-        // navigator.navigate(to: flow.initialDestination, animated: animated)
-    }
 
     /// Navigate to a specific destination within this flow's context
     /// - Parameters:
