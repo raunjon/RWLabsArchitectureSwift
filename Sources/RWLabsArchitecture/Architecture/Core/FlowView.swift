@@ -355,7 +355,7 @@ public extension ComponentView where Self: Destinatationable   {
 }
 
 extension View {
-    public func showDestination<D:RouteDestination>(dest: Binding<D?>,  destView: @escaping (D) -> some View) -> AnyView {
+    public func showDestination<D:RouteDestinationPresentable>(dest: Binding<D?>,  destView: @escaping (D) -> some View) -> AnyView {
         switch dest.wrappedValue?.presentationStyle {
             case .push:
                 AnyView(self

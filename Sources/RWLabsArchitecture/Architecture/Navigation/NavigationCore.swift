@@ -35,7 +35,10 @@ import Combine
 ///     }
 /// }
 /// ```
-/// 
+
+public protocol RouteDestinationPresentable: RouteDestination {
+    var presentationStyle: PresentationStyle { get }
+}
 public protocol RouteDestination: Hashable, Identifiable, Equatable {
 
     // MARK: - Required Properties
@@ -47,7 +50,7 @@ public protocol RouteDestination: Hashable, Identifiable, Equatable {
 //    static var initialDestination: Self { get }
 
     /// How this destination should be presented
-    var presentationStyle: PresentationStyle { get }
+//    var presentationStyle: PresentationStyle { get }
 
     /// Optional metadata for platform-specific customization
     var metadata: [String: String] { get }
@@ -148,7 +151,7 @@ public struct AnyDestination: Hashable, Identifiable {
     public let id: String
 
     /// How this destination should be presented
-    public let presentationStyle: PresentationStyle
+//    public let presentationStyle: PresentationStyle
 
     /// Optional metadata for platform-specific customization
     public let metadata: [String: String]
@@ -165,7 +168,7 @@ public struct AnyDestination: Hashable, Identifiable {
     /// - Parameter destination: The concrete destination to wrap
     public init<D: RouteDestination>(_ destination: D) {
         self.id = String(describing: destination)
-        self.presentationStyle = destination.presentationStyle
+//        self.presentationStyle = destination.presentationStyle
         self.metadata = destination.metadata
         self.base = destination
         self.equalityFunction = { other in

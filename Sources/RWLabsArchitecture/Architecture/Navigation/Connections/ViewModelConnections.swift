@@ -26,7 +26,7 @@ import Combine
 ///     }()
 /// }
 /// ```
-protocol HasConnections: AnyObject {
+public protocol HasConnections: AnyObject {
     /// The type of connections this ViewModel uses
     associatedtype ConnectionsType: ViewModelConnections
 

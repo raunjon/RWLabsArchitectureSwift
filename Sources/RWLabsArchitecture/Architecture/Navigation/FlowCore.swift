@@ -47,7 +47,7 @@ extension TabBarFlow {
 /// Protocol for individual tab flows within a tab bar
 ///
 /// Each tab in a tab bar is represented by a flow conforming to this protocol.
-public protocol TabFlow: NavigationFlow {
+public protocol BaseTabFlow: NavigationFlow {
     /// The type representing tab items
     associatedtype Tabitem = Int
 
@@ -55,7 +55,7 @@ public protocol TabFlow: NavigationFlow {
     var tab: Tabitem { get }
 }
 
-extension TabFlow {
+extension BaseTabFlow {
     /// Tab flows use exclusive activation by default
     public var activationMode: FlowActivationMode {
         .exclusive

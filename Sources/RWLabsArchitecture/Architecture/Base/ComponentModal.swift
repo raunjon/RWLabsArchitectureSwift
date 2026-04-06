@@ -111,7 +111,7 @@ import Combine
 /// - **Cancellable Storage**: Built-in storage for Combine subscriptions
 ///
 @MainActor
-open class ComponentModal<State: ViewModelState, Action: ViewModelAction, Output: ViewModelOutput>: @MainActor ViewModel, @MainActor ActionableComponent, @MainActor OutputableComponent, Equatable, @MainActor Hashable {    
+open class ComponentModal1<State: ViewModelState, Action: ViewModelAction, Output: ViewModelOutput>: @MainActor ViewModel, @MainActor ActionableComponent, @MainActor OutputableComponent, Equatable, @MainActor Hashable {
     
     // MARK: - Properties
 
@@ -247,7 +247,7 @@ open class ComponentModal<State: ViewModelState, Action: ViewModelAction, Output
 
     // MARK: - Equatable
 
-    nonisolated public static func == (lhs: ComponentModal<State, Action, Output>, rhs: ComponentModal<State, Action, Output>) -> Bool {
+    nonisolated public static func == (lhs: ComponentModal1<State, Action, Output>, rhs: ComponentModal1<State, Action, Output>) -> Bool {
         lhs.id == rhs.id
     }
 
