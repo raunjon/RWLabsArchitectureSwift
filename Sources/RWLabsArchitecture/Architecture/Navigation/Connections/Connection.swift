@@ -386,6 +386,8 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
     private func deactivateConnection() {
         isActive = false
         childStateCancellable?.cancel()
+        // Clear the connection's model to trigger sheet dismissal
+        connection.clear()
     }
 
     private func syncStateToViewModel(_ newState: To.State) {
