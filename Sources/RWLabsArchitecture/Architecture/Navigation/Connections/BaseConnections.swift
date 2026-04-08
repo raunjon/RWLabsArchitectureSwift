@@ -105,7 +105,7 @@ open class BaseConnections<ParentViewModel: ViewModel>: @MainActor ViewModelConn
     ///
     /// # Example
     /// ```swift
-    /// let connections = Connections(parent: viewModel)
+    /// let connections = Connections(parent: model)
     /// ```
 //    required public init(parent: ParentViewModel) {
 //        self.parent = parent
@@ -217,11 +217,11 @@ class ExampleParentViewModel: ObservableObject {
 
         // Singleton child connection
         lazy var detailViewModel: ExampleChildViewModel = {
-            let viewModel = ExampleChildViewModel()
-            viewModel.onUpdate { [weak parent] data in
+            let model = ExampleChildViewModel()
+            model.onUpdate { [weak parent] data in
                 parent?.handleChildUpdate(data)
             }
-            return viewModel
+            return model
         }()
     }
 
@@ -335,11 +335,11 @@ class ExampleListViewModel: ObservableObject {
         // Factory method for creating detail ViewModels
         // Creates a new instance each time it's called
         func itemDetail(for item: Item) -> ItemDetailViewModel {
-            let viewModel = ItemDetailViewModel(item: item)
-            viewModel.onUpdate { [weak parent] updatedItem in
+            let model = ItemDetailViewModel(item: item)
+            model.onUpdate { [weak parent] updatedItem in
                 parent?.handleItemUpdate(updatedItem)
             }
-            return viewModel
+            return model
         }
     }
 

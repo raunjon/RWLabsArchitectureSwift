@@ -89,13 +89,13 @@ import Combine
 ///
 /// // In view
 /// struct AddCommentView: View {
-///     @ObservedObject var viewModel: AddCommentViewModel
+///     @ObservedObject var model: AddCommentViewModel
 ///
 ///     var body: some View {
 ///         VStack {
-///             TextField("Comment", text: $viewModel.state.comment)
+///             TextField("Comment", text: $model.state.comment)
 ///             Button("Submit") {
-///                 viewModel.send(.submit)
+///                 model.send(.submit)
 ///             }
 ///         }
 ///     }
@@ -217,7 +217,7 @@ open class ComponentModal1<State: ViewModelState, Action: ViewModelAction, Outpu
     /// ```swift
     /// publisher
     ///     .sink { value in /* ... */ }
-    ///     .store(in: &cancellables) // or viewModel.store(cancellable)
+    ///     .store(in: &cancellables) // or model.store(cancellable)
     /// ```
     ///
     /// - Parameter cancellable: The cancellable to store
@@ -229,7 +229,7 @@ open class ComponentModal1<State: ViewModelState, Action: ViewModelAction, Outpu
     ///
     /// Use this for a fluent API:
     /// ```swift
-    /// let viewModel = MyViewModel(initialState: .init())
+    /// let model = MyViewModel(initialState: .init())
     ///     .onOutput { output in
     ///         // Handle output
     ///     }

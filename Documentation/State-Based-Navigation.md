@@ -117,26 +117,26 @@ class ProductViewModel: BaseViewModel<State, Action, Output, Destination> {
 
 ```swift
 struct ProductListView: View {
-    @StateObject var viewModel: ProductViewModel
+    @StateObject var model: ProductViewModel
 
     var body: some View {
-        List(viewModel.state.products) { product in
+        List(model.state.products) { product in
             Button(product.name) {
-                viewModel.send(.selectProduct(product))
+                model.send(.selectProduct(product))
             }
         }
-        .navigationDestination(item: $viewModel.pushDestination) { destination in
+        .navigationDestination(item: $model.pushDestination) { destination in
             // This binding only activates for .push presentations
             switch destination {
             case .detail(let productState):
-                if let detailVM = viewModel.connections.detail.model {
-                    ProductDetailView(viewModel: detailVM)
+                if let detailVM = model.connections.detail.model {
+                    ProductDetailView(model: detailVM)
                 }
             default:
                 EmptyView()
             }
         }
-        .sheet(item: $viewModel.modalDestination) { destination in
+        .sheet(item: $model.modalDestination) { destination in
             // This binding only activates for .modal/.fullScreen presentations
             switch destination {
             case .cart:
@@ -155,7 +155,7 @@ struct ProductListView: View {
 
 ```swift
 struct ProfileView: View {
-    @StateObject var viewModel: ProfileViewModel
+    @StateObject var model: ProfileViewModel
 
     var body: some View {
         VStack {
@@ -163,14 +163,14 @@ struct ProfileView: View {
 
             Button("Edit Bio") {
                 // Setting state.destination shows the modal
-                viewModel.state.destination = .bioEditor(.init())
+                model.state.destination = .bioEditor(.init())
             }
         }
-        .sheet(item: $viewModel.modalDestination) { destination in
+        .sheet(item: $model.modalDestination) { destination in
             switch destination {
             case .bioEditor:
-                if let editorVM = viewModel.connections.bioEditor.model {
-                    BioEditorView(viewModel: editorVM)
+                if let editorVM = model.connections.bioEditor.model {
+                    BioEditorView(model: editorVM)
                 }
             default:
                 EmptyView()
@@ -184,27 +184,27 @@ struct ProfileView: View {
 
 ```swift
 struct CheckoutView: View {
-    @StateObject var viewModel: CheckoutViewModel
+    @StateObject var model: CheckoutViewModel
 
     var body: some View {
         VStack {
             // ... checkout UI ...
 
             Button("Complete Purchase") {
-                viewModel.send(.purchase)
+                model.send(.purchase)
             }
         }
-        .alert(item: $viewModel.alertDestination) { destination in
+        .alert(item: $model.alertDestination) { destination in
             switch destination {
             case .confirmPurchase(let amount):
                 Alert(
                     title: Text("Confirm Purchase"),
                     message: Text("Total: $\(amount)"),
                     primaryButton: .default(Text("Confirm")) {
-                        viewModel.send(.confirmPurchase)
+                        model.send(.confirmPurchase)
                     },
                     secondaryButton: .cancel {
-                        viewModel.state.destination = nil
+                        model.state.destination = nil
                     }
                 )
             default:
@@ -280,12 +280,12 @@ Navigation is now just state changes, making tests simple:
 
 ```swift
 func testShowDetail() {
-    let viewModel = ProductViewModel(initialState: .init())
+    let model = ProductViewModel(initialState: .init())
 
-    viewModel.send(.selectProduct(testProduct))
+    model.send(.selectProduct(testProduct))
 
-    XCTAssertNotNil(viewModel.state.destination)
-    if case .detail(let productState) = viewModel.state.destination {
+    XCTAssertNotNil(model.state.destination)
+    if case .detail(let productState) = model.state.destination {
         XCTAssertEqual(productState.product.id, testProduct.id)
     } else {
         XCTFail("Expected detail destination")
@@ -298,9 +298,9 @@ func testShowDetail() {
 Since navigation is part of state, you can snapshot and restore entire navigation flows:
 
 ```swift
-let snapshot = viewModel.state
+let snapshot = model.state
 // ... perform actions ...
-viewModel.state = snapshot  // Restore including navigation state
+model.state = snapshot  // Restore including navigation state
 ```
 
 ### 4. State Persistence
@@ -309,12 +309,12 @@ Save and restore navigation state easily:
 
 ```swift
 // Save
-let stateData = try JSONEncoder().encode(viewModel.state)
+let stateData = try JSONEncoder().encode(model.state)
 UserDefaults.standard.set(stateData, forKey: "appState")
 
 // Restore (including navigation position!)
 let stateData = UserDefaults.standard.data(forKey: "appState")
-viewModel.state = try JSONDecoder().decode(State.self, from: stateData)
+model.state = try JSONDecoder().decode(State.self, from: stateData)
 ```
 
 ### 5. Declarative SwiftUI Integration
@@ -322,7 +322,7 @@ viewModel.state = try JSONDecoder().decode(State.self, from: stateData)
 SwiftUI bindings work naturally with state properties:
 
 ```swift
-.sheet(item: $viewModel.modalDestination) { destination in
+.sheet(item: $model.modalDestination) { destination in
     // Automatically shown when state.destination has modal presentation style
 }
 ```
@@ -484,7 +484,7 @@ This enables SwiftUI to properly detect changes and animate transitions.
 
 **Solution:**
 - Check that presentation style is correct
-- Ensure you're using the right binding (`.sheet(item: $viewModel.modalDestination)` for modals)
+- Ensure you're using the right binding (`.sheet(item: $model.modalDestination)` for modals)
 - Verify destination enum conforms to `RouteDestination`
 
 ### Wrong Presentation Style

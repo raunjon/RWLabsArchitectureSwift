@@ -23,7 +23,7 @@ import SwiftUI
 ///     │
 ///     ├─ BaseView
 ///     │   ├─ associatedtype VM: ViewModel
-///     │   ├─ var viewModel: VM
+///     │   ├─ var model: VM
 ///     │   ├─ var content: Content
 ///     │   └─ Automatic .onAppear() handling
 ///     │
@@ -41,14 +41,14 @@ import SwiftUI
 /// struct ProductListView: ComponentView {
 ///     typealias VM = ProductListViewModel
 ///
-///     @StateObject var viewModel: VM
+///     @StateObject var model: VM
 ///     let navigator: SwiftUINavigator<VM.D>
 ///
 ///     var content: some View {
-///         List(viewModel.products, id: \.id) { product in
+///         List(model.products, id: \.id) { product in
 ///             ProductRow(product: product)
 ///                 .onTapGesture {
-///                     viewModel.send(.productTapped(product))
+///                     model.send(.productTapped(product))
 ///                 }
 ///         }
 ///         .navigationTitle("Products")
@@ -58,7 +58,7 @@ import SwiftUI
 ///         switch destination {
 ///         case .productDetail(let product):
 ///             ProductDetailView(
-///                 viewModel: viewModel.connections.createProductDetail(product),
+///                 model: model.connections.createProductDetail(product),
 ///                 navigator: navigator
 ///             )
 ///         }
@@ -71,13 +71,13 @@ import SwiftUI
 /// struct CheckoutView: ComponentView {
 ///     typealias VM = CheckoutViewModel
 ///
-///     @StateObject var viewModel: VM
+///     @StateObject var model: VM
 ///     let navigator: SwiftUINavigator<VM.D>
 ///
 ///     var content: some View {
 ///         VStack(spacing: 16) {
 ///             // Cart items
-///             ForEach(viewModel.cartItems) { item in
+///             ForEach(model.cartItems) { item in
 ///                 CartItemRow(item: item)
 ///             }
 ///
@@ -85,17 +85,17 @@ import SwiftUI
 ///             HStack {
 ///                 Text("Total:")
 ///                 Spacer()
-///                 Text("$\(viewModel.total, specifier: "%.2f")")
+///                 Text("$\(model.total, specifier: "%.2f")")
 ///             }
 ///             .font(.headline)
 ///
 ///             // Checkout button
 ///             Button("Proceed to Payment") {
-///                 viewModel.send(.checkoutTapped)
+///                 model.send(.checkoutTapped)
 ///             }
-///             .disabled(viewModel.cartItems.isEmpty)
+///             .disabled(model.cartItems.isEmpty)
 ///
-///             if viewModel.isLoading {
+///             if model.isLoading {
 ///                 ProgressView()
 ///             }
 ///         }
@@ -106,13 +106,13 @@ import SwiftUI
 ///         switch destination {
 ///         case .payment:
 ///             PaymentView(
-///                 viewModel: viewModel.connections.paymentViewModel,
+///                 model: model.connections.paymentViewModel,
 ///                 navigator: navigator
 ///             )
 ///
 ///         case .orderConfirmation(let orderId):
 ///             OrderConfirmationView(
-///                 viewModel: viewModel.connections.createOrderConfirmation(orderId),
+///                 model: model.connections.createOrderConfirmation(orderId),
 ///                 navigator: navigator
 ///             )
 ///         }
@@ -123,7 +123,7 @@ import SwiftUI
 /// # What ComponentView Provides
 ///
 /// ## From BaseView:
-/// - **ViewModel Integration**: Automatic `viewModel` property
+/// - **ViewModel Integration**: Automatic `model` property
 /// - **Content Separation**: Clean separation of content from navigation
 /// - **Lifecycle Handling**: Automatic `onAppear()` call
 /// - **Type Safety**: Generic over ViewModel type
@@ -230,15 +230,15 @@ import SwiftUI
 /// struct ProductListView: ComponentView {
 ///     typealias VM = ProductListViewModel
 ///
-///     @StateObject var viewModel: VM
+///     @StateObject var model: VM
 ///     let navigator: SwiftUINavigator<VM.D>
 ///
 ///     var content: some View {
 ///         List {
-///             ForEach(viewModel.products, id: \.id) { product in
+///             ForEach(model.products, id: \.id) { product in
 ///                 ProductRow(product: product)
 ///                     .onTapGesture {
-///                         viewModel.send(.productTapped(product))
+///                         model.send(.productTapped(product))
 ///                     }
 ///             }
 ///         }
@@ -246,15 +246,15 @@ import SwiftUI
 ///         .toolbar {
 ///             ToolbarItem(placement: .navigationBarTrailing) {
 ///                 Button("Cart") {
-///                     viewModel.navigate(to: .cart)
+///                     model.navigate(to: .cart)
 ///                 }
 ///             }
 ///         }
 ///         .refreshable {
-///             viewModel.send(.refreshTapped)
+///             model.send(.refreshTapped)
 ///         }
 ///         .overlay {
-///             if viewModel.isLoading {
+///             if model.isLoading {
 ///                 ProgressView()
 ///             }
 ///         }
@@ -264,13 +264,13 @@ import SwiftUI
 ///         switch destination {
 ///         case .productDetail(let product):
 ///             ProductDetailView(
-///                 viewModel: viewModel.connections.createProductDetail(product),
+///                 model: model.connections.createProductDetail(product),
 ///                 navigator: navigator
 ///             )
 ///
 ///         case .cart:
 ///             CartView(
-///                 viewModel: viewModel.connections.cartViewModel,
+///                 model: model.connections.cartViewModel,
 ///                 navigator: navigator
 ///             )
 ///         }
@@ -323,7 +323,7 @@ public protocol Destinatationable: BaseView {
     ///     switch destination {
     ///     case .detail(let id):
     ///         DetailView(
-    ///             viewModel: viewModel.connections.createDetail(id),
+    ///             model: model.connections.createDetail(id),
     ///             navigator: navigator
     ///         )
     ///     }
@@ -338,9 +338,9 @@ public extension ComponentView where Self: Destinatationable   {
     var body: some View {
         content
             .onAppear {
-                viewModel.onAppear()
+                model.onAppear()
             }
-//            .showDestination(dest: viewModel.destination, destView: { dest in
+//            .showDestination(dest: model.destination, destView: { dest in
 //                destinationView(for: dest)
 //            })
 //            .navigationDestination(for: VM.State.Destination.self) { destination in
@@ -415,7 +415,7 @@ public extension RoutableView {
     /// This implementation:
     /// 1. Wraps content in NavigationStack
     /// 2. Binds to navigator's path for navigation state
-    /// 3. Calls `viewModel.onAppear()` and `viewModel.setCoordinator()`
+    /// 3. Calls `model.onAppear()` and `model.setCoordinator()`
     /// 4. Configures `.navigationDestination` for push navigation
     /// 5. Configures `.sheet` for modal presentation
     /// 6. Configures `.alert` for alert presentation
@@ -423,14 +423,14 @@ public extension RoutableView {
     /// # Navigation Bindings
     ///
     /// - **Path**: Bound to navigator's path for push navigation
-    /// - **Modal**: Bound to viewModel's modalDestination for sheets
-    /// - **Alert**: Bound to viewModel's alertDestination for alerts
+    /// - **Modal**: Bound to model's modalDestination for sheets
+    /// - **Alert**: Bound to model's alertDestination for alerts
     ///
     /// # Lifecycle
     ///
     /// On view appear:
-    /// 1. `viewModel.onAppear()` - Initialize data, analytics, etc.
-    /// 2. `viewModel.setCoordinator()` - Connect ViewModel to navigation
+    /// 1. `model.onAppear()` - Initialize data, analytics, etc.
+    /// 2. `model.setCoordinator()` - Connect ViewModel to navigation
     ///
     /// # Example Flow
     ///
@@ -443,8 +443,8 @@ public extension RoutableView {
     ///     ↓
     /// .onAppear fires
     ///     ↓
-    /// viewModel.onAppear() called
-    /// viewModel.setCoordinator() called
+    /// model.onAppear() called
+    /// model.setCoordinator() called
     ///     ↓
     /// User taps → navigate(to:)
     ///     ↓
@@ -461,7 +461,7 @@ public extension RoutableView {
         NavigationStack {
             content
                 .onAppear {
-                    viewModel.onAppear()
+                    model.onAppear()
                 }
         }
     }
@@ -514,9 +514,9 @@ public extension RoutableView {
 
  The automatic `setCoordinator()` call connects the ViewModel to
  navigation capabilities, enabling:
- - viewModel.navigate(to:)
- - viewModel.dismiss()
- - viewModel.popToRoot()
+ - model.navigate(to:)
+ - model.dismiss()
+ - model.popToRoot()
  - Programmatic navigation from ViewModels
 
  ## Body Override
@@ -528,13 +528,13 @@ public extension RoutableView {
  ```
  NavigationStack
      └─ content
-         └─ .onAppear { viewModel.onAppear() }
+         └─ .onAppear { model.onAppear() }
  ```
 
  Not:
  ```
  content
-     └─ .onAppear { viewModel.onAppear() }
+     └─ .onAppear { model.onAppear() }
          └─ NavigationStack (wrong!)
  ```
 
@@ -563,17 +563,17 @@ public extension RoutableView {
  extension ComponentView {
      func withLoadingOverlay() -> some View {
          overlay {
-             if viewModel.isLoading {
+             if model.isLoading {
                  ProgressView()
              }
          }
      }
 
      func withErrorHandling() -> some View {
-         alert("Error", isPresented: .constant(viewModel.error != nil)) {
+         alert("Error", isPresented: .constant(model.error != nil)) {
              Button("OK") { }
          } message: {
-             Text(viewModel.error?.localizedDescription ?? "")
+             Text(model.error?.localizedDescription ?? "")
          }
      }
  }

@@ -15,7 +15,7 @@ The architecture **already handles this automatically** via `PresentationStyle`.
 
 ```swift
 // ✅ Just set the destination - it automatically pushes or shows modal!
-viewModel.destination = .detail(entry: entry)
+model.destination = .detail(entry: entry)
 
 // The PresentationStyle determines how it's presented:
 enum EntriesDestination: RouteDestination {
@@ -76,7 +76,7 @@ class EntriesViewModel: BaseViewModel<State, Action, Output, Destination> {
 }
 
 // Usage - no optionals, no force unwrapping!
-let filter = viewModel.connections.filterViewModel
+let filter = model.connections.filterViewModel
 ```
 
 #### Pattern 2: Factory Methods (Dynamic Children)
@@ -103,7 +103,7 @@ class Connections: EnhancedBaseConnections<EntriesViewModel> {
 }
 
 // Usage
-let detailVM = viewModel.connections.createEntryDetail(entry: entry)
+let detailVM = model.connections.createEntryDetail(entry: entry)
 // detailVM is non-optional! ✅
 ```
 
@@ -148,7 +148,7 @@ class EntriesViewModel: BaseViewModel<EntriesState, Action, Output, Destination>
 }
 
 // Usage
-if let detailVM = viewModel.selectedEntryViewModel {
+if let detailVM = model.selectedEntryViewModel {
     // Work with detailVM - still type-safe, no force unwrap
 }
 ```
@@ -300,11 +300,11 @@ class EntriesViewModel: BaseViewModel<EntriesState, EntriesAction, EntriesOutput
 struct EntriesTabView: FlowView {
     @EnvironmentObject var coordinator: AppCoordinator
     @EnvironmentObject var flow: EntriesFlow
-    @ObservedObject var viewModel: EntriesViewModel
+    @ObservedObject var model: EntriesViewModel
     @EnvironmentObject var navigator: SwiftUINavigator
 
     var content: some View {
-        EntriesView(viewModel: viewModel)
+        EntriesView(model: model)
             .navigationTitle("Entries")
     }
 
@@ -316,15 +316,15 @@ struct EntriesTabView: FlowView {
 
         case .detail:
             // ✅ No force unwrap needed!
-            if let detailVM = viewModel.connections.selectedEntryViewModel {
-                EntryDetailView(viewModel: detailVM)
+            if let detailVM = model.connections.selectedEntryViewModel {
+                EntryDetailView(model: detailVM)
             } else {
                 EmptyView()
             }
 
         case .filter:
             // ✅ Non-optional access!
-            FilterView(viewModel: viewModel.connections.filterViewModel)
+            FilterView(model: model.connections.filterViewModel)
         }
     }
 }
@@ -335,25 +335,25 @@ struct EntriesTabView: FlowView {
 ### ✅ No Optional Unwrapping
 ```swift
 // ❌ OLD
-if let vm = viewModel.connections.filterViewModel {
+if let vm = model.connections.filterViewModel {
     vm.send(.apply)  // Annoying optional chaining
 }
 
 // ✅ NEW
-viewModel.connections.filterViewModel.send(.apply)  // Direct access!
+model.connections.filterViewModel.send(.apply)  // Direct access!
 ```
 
 ### ✅ Automatic Presentation Style
 ```swift
 // ✅ Just set destination - automatic push/modal!
-viewModel.destination = .detail  // Shows as modal (based on PresentationStyle)
-viewModel.destination = .filter  // Pushes onto stack
+model.destination = .detail  // Shows as modal (based on PresentationStyle)
+model.destination = .filter  // Pushes onto stack
 ```
 
 ### ✅ Type-Safe Connections
 ```swift
 // ✅ Compile-time safety
-let filter: FilterViewModel = viewModel.connections.filterViewModel
+let filter: FilterViewModel = model.connections.filterViewModel
 // No runtime crashes, no force unwrapping!
 ```
 
@@ -422,7 +422,7 @@ func destinationView(for destination: CheckInDestination) -> some View {
     case .entries(let ticket):
         // ✅ Create embedded EntriesView
         EntriesView(
-            viewModel: viewModel.connections.createEntriesView(ticket: ticket)
+            model: model.connections.createEntriesView(ticket: ticket)
         ).anyView()
     }
 }

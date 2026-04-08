@@ -360,46 +360,46 @@ import RWLabsArchitecture
 // MARK: - Profile View
 
 struct ProfileView: View {
-    @StateObject var viewModel: ProfileViewModel
+    @StateObject var model: ProfileViewModel
 
     var body: some View {
         VStack(spacing: 20) {
             // User Info
-            Text(viewModel.state.userName)
+            Text(model.state.userName)
                 .font(.title)
 
-            Text(viewModel.state.userBio.isEmpty ? "No bio yet" : viewModel.state.userBio)
+            Text(model.state.userBio.isEmpty ? "No bio yet" : model.state.userBio)
                 .foregroundColor(.secondary)
 
             // Edit Bio Button
             Button("Edit Bio") {
-                viewModel.send(.editBioTapped)
+                model.send(.editBioTapped)
             }
 
             // Settings Button
             Button("Settings") {
-                viewModel.send(.settingsTapped)
+                model.send(.settingsTapped)
             }
         }
         .padding()
         // Modal presentation for .bioEditor destination
-        .sheet(item: $viewModel.modalDestination) { destination in
+        .sheet(item: $model.modalDestination) { destination in
             switch destination {
             case .bioEditor:
                 // Access the child ViewModel through the connection
-                if let bioEditorVM = viewModel.connections.bioEditor.model {
-                    BioEditorView(viewModel: bioEditorVM)
+                if let bioEditorVM = model.connections.bioEditor.model {
+                    BioEditorView(model: bioEditorVM)
                 }
             default:
                 EmptyView()
             }
         }
         // Push navigation for .settings destination
-        .navigationDestination(item: $viewModel.pushDestination) { destination in
+        .navigationDestination(item: $model.pushDestination) { destination in
             switch destination {
             case .settings:
-                if let settingsVM = viewModel.connections.settings.model {
-                    SettingsView(viewModel: settingsVM)
+                if let settingsVM = model.connections.settings.model {
+                    SettingsView(model: settingsVM)
                 }
             default:
                 EmptyView()
@@ -411,20 +411,20 @@ struct ProfileView: View {
 // MARK: - Bio Editor View
 
 struct BioEditorView: View {
-    @StateObject var viewModel: BioEditorViewModel
+    @StateObject var model: BioEditorViewModel
     @Environment(\.dismiss) var dismiss
 
     var body: some View {
         NavigationView {
             VStack {
                 // Text Editor
-                TextEditor(text: $viewModel.state.bioText)
+                TextEditor(text: $model.state.bioText)
                     .frame(height: 200)
                     .border(Color.gray, width: 1)
 
                 // Character Count
-                Text("\(viewModel.state.remainingCharacters) characters remaining")
-                    .foregroundColor(viewModel.state.isValid ? .secondary : .red)
+                Text("\(model.state.remainingCharacters) characters remaining")
+                    .foregroundColor(model.state.isValid ? .secondary : .red)
 
                 Spacer()
             }
@@ -434,20 +434,20 @@ struct BioEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
-                        viewModel.send(.cancelTapped)
+                        model.send(.cancelTapped)
                         dismiss()
                     }
                 }
 
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        viewModel.send(.saveTapped)
+                        model.send(.saveTapped)
                     }
-                    .disabled(!viewModel.state.isValid)
+                    .disabled(!model.state.isValid)
                 }
             }
             .overlay {
-                if viewModel.state.isLoading {
+                if model.state.isLoading {
                     ProgressView()
                 }
             }
@@ -495,10 +495,10 @@ if let childState = childState {
 
 ```swift
 // BioEditorView changes the text
-TextEditor(text: $viewModel.state.bioText)
+TextEditor(text: $model.state.bioText)
 
 // Child ViewModel state changes
-viewModel.state.bioText = "New bio text"
+model.state.bioText = "New bio text"
 ```
 
 **What happens:**
@@ -511,7 +511,7 @@ viewModel.state.bioText = "New bio text"
 
 ```swift
 // Inside CaseConnection.syncChildStateToParent()
-let newChildState = viewModel.state  // Get updated child state
+let newChildState = model.state  // Get updated child state
 
 // Update the case in parent's destination
 try _ = AnyCasePath(casePath).modify(&destination) { _ in newChildState }
@@ -560,13 +560,13 @@ state.destination = nil
 ### ✅ Single Source of Truth
 ```swift
 // All navigation state in one place
-print(viewModel.state.destination)  // .bioEditor(State(...))
+print(model.state.destination)  // .bioEditor(State(...))
 ```
 
 ### ✅ State Persistence
 ```swift
 // Save entire app state including child ViewModels
-let data = try JSONEncoder().encode(viewModel.state)
+let data = try JSONEncoder().encode(model.state)
 // Includes the bio editor state if it's active!
 ```
 
@@ -599,11 +599,11 @@ func testBioEditor() {
 ### ✅ Transparent Access
 ```swift
 // Access child properties directly through connection
-viewModel.connections.bioEditor.state?.bioText
-viewModel.connections.bioEditor.send?(.textChanged("..."))
+model.connections.bioEditor.state?.bioText
+model.connections.bioEditor.send?(.textChanged("..."))
 
 // Or access the model
-if let bioEditor = viewModel.connections.bioEditor.model {
+if let bioEditor = model.connections.bioEditor.model {
     bioEditor.send(.saveTapped)
 }
 ```
@@ -745,7 +745,7 @@ Returns the child ViewModel if the destination case is currently active.
 
 ```swift
 // Access the child ViewModel
-if let bioEditor = viewModel.connections.bioEditor.model {
+if let bioEditor = model.connections.bioEditor.model {
     bioEditor.send(.textChanged("New bio"))
 }
 ```
@@ -775,14 +775,14 @@ CaseConnection supports `@dynamicMemberLookup`, allowing transparent access to c
 
 ```swift
 // Direct property access (returns optional)
-let text = viewModel.connections.bioEditor.state?.bioText
+let text = model.connections.bioEditor.state?.bioText
 
 // Direct method access (returns optional closure)
-viewModel.connections.bioEditor.send?(.textChanged("New text"))
+model.connections.bioEditor.send?(.textChanged("New text"))
 
 // Equivalent to:
-viewModel.connections.bioEditor.model?.state.bioText
-viewModel.connections.bioEditor.model?.send(.textChanged("New text"))
+model.connections.bioEditor.model?.state.bioText
+model.connections.bioEditor.model?.send(.textChanged("New text"))
 ```
 
 ### Lifecycle

@@ -95,21 +95,21 @@ class EntriesViewModel: BaseViewModel<EntriesState, Action, Output, Destination>
 ### ✅ No Force Unwrapping
 ```swift
 // Direct access, no optionals!
-viewModel.connections.filterViewModel.send(.apply)
+model.connections.filterViewModel.send(.apply)
 ```
 
 ### ✅ State Persistence
 ```swift
 // ViewModel is created once and stored in state
-let filter1 = viewModel.connections.filterViewModel
-let filter2 = viewModel.connections.filterViewModel
+let filter1 = model.connections.filterViewModel
+let filter2 = model.connections.filterViewModel
 // filter1 === filter2  ✅ Same instance!
 ```
 
 ### ✅ Mutability via State
 ```swift
 // Update child ViewModel through state
-viewModel.updateState { state in
+model.updateState { state in
     state.filterViewModel?.send(.clear)
 }
 ```
@@ -264,14 +264,14 @@ class EntriesViewModel: BaseViewModel<EntriesState, EntriesAction, EntriesOutput
 // MARK: - Usage in View
 
 struct EntriesTabView: FlowView {
-    @ObservedObject var viewModel: EntriesViewModel
+    @ObservedObject var model: EntriesViewModel
 
     var content: some View {
         VStack {
             // ✅ Non-optional access to filter
-            FilterBar(viewModel: viewModel.connections.filterViewModel)
+            FilterBar(model: model.connections.filterViewModel)
 
-            EntriesList(viewModel: viewModel)
+            EntriesList(model: model)
         }
     }
 
@@ -282,15 +282,15 @@ struct EntriesTabView: FlowView {
 
         case .detail:
             // ✅ Safe optional unwrapping
-            if let detailVM = viewModel.connections.selectedEntryViewModel {
-                EntryDetailView(viewModel: detailVM)
+            if let detailVM = model.connections.selectedEntryViewModel {
+                EntryDetailView(model: detailVM)
             } else {
                 EmptyView()
             }
 
         case .filter:
             // ✅ Non-optional!
-            FilterView(viewModel: viewModel.connections.filterViewModel)
+            FilterView(model: model.connections.filterViewModel)
         }
     }
 }
@@ -381,6 +381,6 @@ Use when:
 - ✅ No force unwrapping
 
 **Your architecture now supports:**
-1. `viewModel.destination = .detail` → Automatic push/modal ✅
-2. `viewModel.connections.filterViewModel` → Non-optional access ✅
+1. `model.destination = .detail` → Automatic push/modal ✅
+2. `model.connections.filterViewModel` → Non-optional access ✅
 3. State-mapped child ViewModels → Fully mutable ✅

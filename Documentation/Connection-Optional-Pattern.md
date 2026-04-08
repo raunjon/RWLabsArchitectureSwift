@@ -78,7 +78,7 @@ class EntriesViewModel: BaseViewModel<...> {
 
     func showDetail() {
         // Optional unwrapping required
-        if let detailVM = connections.selectedEntry.viewModel {
+        if let detailVM = connections.selectedEntry.model {
             destination = .detail(detailVM)
         }
     }
@@ -106,7 +106,7 @@ class ParentViewModel: BaseViewModel<...> {
 
     func useChild() {
         // Returns nil if not in state
-        if let child = connections.optionalChild.viewModel {
+        if let child = connections.optionalChild.model {
             child.send(.doSomething)
         }
     }
@@ -192,19 +192,19 @@ lazy var filter: Connection<FilterViewModel> = {
 
 ```swift
 // Good ✅
-if let detailVM = connections.selectedEntry.viewModel {
+if let detailVM = connections.selectedEntry.model {
     destination = .detail(detailVM)
 }
 
 // Bad ❌ - Force unwrapping
-destination = .detail(connections.selectedEntry.viewModel!)
+destination = .detail(connections.selectedEntry.model!)
 ```
 
 ### 4. Use Guard for Early Returns
 
 ```swift
 func showDetail() {
-    guard let detailVM = connections.selectedEntry.viewModel else {
+    guard let detailVM = connections.selectedEntry.model else {
         Log.warning("No entry selected")
         return
     }

@@ -146,20 +146,20 @@ extension ObservableObject {
 ///
 ///         // Singleton child (reused across accesses)
 ///         lazy var childViewModel: ChildViewModel = {
-///             let viewModel = ChildViewModel(initialState: .init())
-///             viewModel.onOutput { [weak parent] output in
+///             let model = ChildViewModel(initialState: .init())
+///             model.onOutput { [weak parent] output in
 ///                 parent?.handleChildOutput(output)
 ///             }
-///             return viewModel
+///             return model
 ///         }()
 ///
 ///         // Factory method (new instance each call)
 ///         func createDetailViewModel(id: String) -> DetailViewModel {
-///             let viewModel = DetailViewModel(initialState: .init(id: id))
-///             viewModel.onOutput { [weak parent] output in
+///             let model = DetailViewModel(initialState: .init(id: id))
+///             model.onOutput { [weak parent] output in
 ///                 parent?.handleDetailOutput(output)
 ///             }
-///             return viewModel
+///             return model
 ///         }
 ///     }
 ///

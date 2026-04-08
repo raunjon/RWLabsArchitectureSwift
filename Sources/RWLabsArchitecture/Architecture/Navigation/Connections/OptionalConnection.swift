@@ -167,7 +167,7 @@ public final class OptionalConnection<VM: ViewModel>: @MainActor AnyConnection {
         guard getFromState == nil, let parent = parentRef else { return }
 
         guard let kp = storedKeyPath else {
-            fatalError("OptionalConnection must call .connect(to:) before accessing viewModel")
+            fatalError("OptionalConnection must call .connect(to:) before accessing model")
         }
 
         setupAccessors(parent: parent, keyPath: kp)
@@ -205,8 +205,8 @@ public final class OptionalConnection<VM: ViewModel>: @MainActor AnyConnection {
     // MARK: - Private Helpers
 
     /// Binds output handler if both ViewModel and handler exist
-    private func bindOutputIfPossible(to viewModel: VM?) {
-        guard let vm = viewModel,
+    private func bindOutputIfPossible(to model: VM?) {
+        guard let vm = model,
               let outputHandler = outputHandler else { return }
 
         vm.onOutput(outputHandler)

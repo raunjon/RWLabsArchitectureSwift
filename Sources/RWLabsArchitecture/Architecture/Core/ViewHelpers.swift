@@ -22,7 +22,7 @@ import Combine
 ///
 /// ```swift
 /// struct ProductListView: View {
-///     @StateObject var viewModel: ProductListViewModel
+///     @StateObject var model: ProductListViewModel
 ///
 ///     var body: some View {
 ///         // View implementation
@@ -44,7 +44,7 @@ import Combine
 //    associatedtype ViewModelType: ViewModel
 //
 //    /// The ViewModel instance
-//    var viewModel: ViewModelType { get }
+//    var model: ViewModelType { get }
 //
 //    /// The main body of the component (required by View protocol)
 //    var body: Self.Body { get }
@@ -58,7 +58,7 @@ import Combine
 /// without requiring protocol conformance.
 
 public extension View {
-    /// Subscribe to a publisher with a handler (convenience for viewModel.outputs)
+    /// Subscribe to a publisher with a handler (convenience for model.outputs)
     ///
     /// Provides syntactic sugar for observing ViewModel output streams
     /// in SwiftUI views.
@@ -68,13 +68,13 @@ public extension View {
     /// ## Basic Output Handling
     /// ```swift
     /// struct ProductListView: View {
-    ///     @StateObject var viewModel: ProductListViewModel
+    ///     @StateObject var model: ProductListViewModel
     ///
     ///     var body: some View {
-    ///         List(viewModel.products, id: \.id) { product in
+    ///         List(model.products, id: \.id) { product in
     ///             ProductRow(product: product)
     ///         }
-    ///         .onOutput(viewModel.outputs) { output in
+    ///         .onOutput(model.outputs) { output in
     ///             handleOutput(output)
     ///         }
     ///     }
@@ -94,7 +94,7 @@ public extension View {
     /// ```swift
     /// var body: some View {
     ///     ContentView()
-    ///         .onOutput(viewModel.outputs) { output in
+    ///         .onOutput(model.outputs) { output in
     ///             switch output {
     ///             case .success:
     ///                 showSuccessMessage()
@@ -129,18 +129,18 @@ public extension View {
     ///
     /// ```swift
     /// // Using onOutput (clearer intent)
-    /// .onOutput(viewModel.outputs) { output in
+    /// .onOutput(model.outputs) { output in
     ///     handleOutput(output)
     /// }
     ///
     /// // Using onReceive (same behavior)
-    /// .onReceive(viewModel.outputs) { output in
+    /// .onReceive(model.outputs) { output in
     ///     handleOutput(output)
     /// }
     /// ```
     ///
     /// - Parameters:
-    ///   - publisher: The publisher to subscribe to (typically `viewModel.outputs`)
+    ///   - publisher: The publisher to subscribe to (typically `model.outputs`)
     ///   - handler: Closure called for each published value
     /// - Returns: Modified view with output subscription
     func onOutput<Output>(_ publisher: AnyPublisher<Output, Never>, perform handler: @escaping (Output) -> Void) -> some View {
@@ -252,10 +252,10 @@ public protocol StatelessComponentView: View {
 
  ```
  SwiftUI View
-     ├── @StateObject var viewModel
-     ├── body (observes viewModel.state)
-     ├── send actions → viewModel.send(action)
-     └── receive outputs → .onOutput(viewModel.outputs)
+     ├── @StateObject var model
+     ├── body (observes model.state)
+     ├── send actions → model.send(action)
+     └── receive outputs → .onOutput(model.outputs)
  ```
 
  ## Complete Example
@@ -363,14 +363,14 @@ public protocol StatelessComponentView: View {
  // MARK: - View
 
  struct ProductListView: View {
-     @StateObject var viewModel: ProductListViewModel
+     @StateObject var model: ProductListViewModel
      @State private var showingAlert = false
      @State private var alertMessage = ""
 
      var body: some View {
          NavigationView {
              ZStack {
-                 if viewModel.isLoading {
+                 if model.isLoading {
                      ProgressView()
                  } else {
                      productList
@@ -380,15 +380,15 @@ public protocol StatelessComponentView: View {
              .toolbar {
                  ToolbarItem(placement: .navigationBarTrailing) {
                      Button("Refresh") {
-                         viewModel.send(.refreshTapped)
+                         model.send(.refreshTapped)
                      }
                  }
              }
          }
          .onAppear {
-             viewModel.onAppear()
+             model.onAppear()
          }
-         .onOutput(viewModel.outputs) { output in
+         .onOutput(model.outputs) { output in
              handleOutput(output)
          }
          .alert("Error", isPresented: $showingAlert) {
@@ -399,10 +399,10 @@ public protocol StatelessComponentView: View {
      }
 
      private var productList: some View {
-         List(viewModel.products, id: \.id) { product in
+         List(model.products, id: \.id) { product in
              ProductRow(product: product)
                  .onTapGesture {
-                     viewModel.send(.productTapped(product))
+                     model.send(.productTapped(product))
                  }
          }
      }
@@ -464,7 +464,7 @@ public protocol StatelessComponentView: View {
 
  #Preview {
      ProductListView(
-         viewModel: ProductListViewModel(
+         model: ProductListViewModel(
              initialState: ProductListState(
                  products: [
                      Product(id: 1, name: "iPhone", description: "Latest model", price: 999.99, imageURL: nil),

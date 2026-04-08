@@ -253,22 +253,22 @@ public protocol ViewModelOutput {}
 /// ## In SwiftUI View
 /// ```swift
 /// struct CounterView: View {
-///     @StateObject var viewModel: CounterViewModel
+///     @StateObject var model: CounterViewModel
 ///
 ///     var body: some View {
 ///         VStack {
-///             Text("Count: \(viewModel.state.count)")
+///             Text("Count: \(model.state.count)")
 ///
 ///             HStack {
-///                 Button("-") { viewModel.send(.decrement) }
-///                 Button("+") { viewModel.send(.increment) }
-///                 Button("Reset") { viewModel.send(.reset) }
+///                 Button("-") { model.send(.decrement) }
+///                 Button("+") { model.send(.increment) }
+///                 Button("Reset") { model.send(.reset) }
 ///             }
 ///         }
 ///         .onAppear {
-///             viewModel.onAppear()
+///             model.onAppear()
 ///         }
-///         .onReceive(viewModel.outputs) { output in
+///         .onReceive(model.outputs) { output in
 ///             handleOutput(output)
 ///         }
 ///     }
@@ -458,8 +458,8 @@ public extension DynamicStateLookup {
 ///
 /// Allows accessing state properties directly:
 /// ```swift
-/// viewModel.userName  // Instead of viewModel.state.userName
-/// viewModel.isLoading // Instead of viewModel.state.isLoading
+/// model.userName  // Instead of model.state.userName
+/// model.isLoading // Instead of model.state.isLoading
 /// ```
 public extension DynamicStateLookup where Self: StateComponent {
 
@@ -615,30 +615,30 @@ public extension DynamicStateLookup where Self: ViewModel {
 
  // MARK: - View
  struct LoginView: View {
-     @StateObject var viewModel: LoginViewModel
+     @StateObject var model: LoginViewModel
 
      var body: some View {
          VStack {
-             TextField("Email", text: $viewModel.email)
-             SecureField("Password", text: $viewModel.password)
+             TextField("Email", text: $model.email)
+             SecureField("Password", text: $model.password)
 
              Button("Login") {
-                 viewModel.send(.loginTapped)
+                 model.send(.loginTapped)
              }
-             .disabled(!viewModel.state.isLoginButtonEnabled)
+             .disabled(!model.state.isLoginButtonEnabled)
 
              Button("Forgot Password?") {
-                 viewModel.send(.forgotPasswordTapped)
+                 model.send(.forgotPasswordTapped)
              }
 
-             if viewModel.isLoading {
+             if model.isLoading {
                  ProgressView()
              }
          }
          .onAppear {
-             viewModel.onAppear()
+             model.onAppear()
          }
-         .onReceive(viewModel.outputs) { output in
+         .onReceive(model.outputs) { output in
              handleOutput(output)
          }
      }

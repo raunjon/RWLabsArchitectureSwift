@@ -127,7 +127,7 @@ class LoginViewModel {
 struct LoginScreen: View {
     @EnvironmentObject var coordinator: NavigationCoordinator
     @EnvironmentObject var navigator: SwiftUINavigator
-    @StateObject private var viewModel: LoginViewModel
+    @StateObject private var model: LoginViewModel
 
     var body: some View {
         NavigationStack(path: navigator.pathBinding(for: LoginDestination.self)) {

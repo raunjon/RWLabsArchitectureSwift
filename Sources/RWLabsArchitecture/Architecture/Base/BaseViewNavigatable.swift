@@ -38,14 +38,14 @@ import SwiftUI
 /// struct ProductListView: BaseView, Navigatable {
 ///     typealias VM = ProductListViewModel
 ///
-///     @StateObject var viewModel: VM
+///     @StateObject var model: VM
 ///     let navigator: SwiftUINavigator<VM.D>
 ///
 ///     var content: some View {
-///         List(viewModel.products, id: \.id) { product in
+///         List(model.products, id: \.id) { product in
 ///             ProductRow(product: product)
 ///                 .onTapGesture {
-///                     viewModel.navigate(to: .productDetail(product))
+///                     model.navigate(to: .productDetail(product))
 ///                 }
 ///         }
 ///         .navigationTitle("Products")
@@ -55,7 +55,7 @@ import SwiftUI
 ///         switch destination {
 ///         case .productDetail(let product):
 ///             ProductDetailView(
-///                 viewModel: viewModel.connections.createProductDetail(product),
+///                 model: model.connections.createProductDetail(product),
 ///                 navigator: navigator
 ///             )
 ///         }
@@ -82,21 +82,21 @@ import SwiftUI
 /// }
 ///
 /// struct MainView: BaseView, Navigatable {
-///     @StateObject var viewModel: MainViewModel
+///     @StateObject var model: MainViewModel
 ///     let navigator: SwiftUINavigator<MainViewModel.D>
 ///
 ///     var content: some View {
 ///         VStack {
 ///             Button("View Profile") {
-///                 viewModel.navigate(to: .profile)
+///                 model.navigate(to: .profile)
 ///             }
 ///
 ///             Button("Open Settings") {
-///                 viewModel.navigate(to: .settings)
+///                 model.navigate(to: .settings)
 ///             }
 ///
 ///             Button("View Cart") {
-///                 viewModel.navigate(to: .cart)
+///                 model.navigate(to: .cart)
 ///             }
 ///         }
 ///     }
@@ -105,25 +105,25 @@ import SwiftUI
 ///         switch destination {
 ///         case .profile:
 ///             ProfileView(
-///                 viewModel: viewModel.connections.profileViewModel,
+///                 model: model.connections.profileViewModel,
 ///                 navigator: navigator
 ///             )
 ///
 ///         case .settings:
 ///             SettingsView(
-///                 viewModel: viewModel.connections.settingsViewModel,
+///                 model: model.connections.settingsViewModel,
 ///                 navigator: navigator
 ///             )
 ///
 ///         case .productDetail(let product):
 ///             ProductDetailView(
-///                 viewModel: viewModel.connections.createProductDetail(product),
+///                 model: model.connections.createProductDetail(product),
 ///                 navigator: navigator
 ///             )
 ///
 ///         case .cart:
 ///             CartView(
-///                 viewModel: viewModel.connections.cartViewModel,
+///                 model: model.connections.cartViewModel,
 ///                 navigator: navigator
 ///             )
 ///         }
@@ -136,7 +136,7 @@ import SwiftUI
 /// ```
 /// 1. User taps button
 ///     ↓
-/// 2. View calls viewModel.navigate(to: destination)
+/// 2. View calls model.navigate(to: destination)
 ///     ↓
 /// 3. ViewModel updates NavigationCoordinator
 ///     ↓
@@ -159,8 +159,8 @@ import SwiftUI
 /// # Automatic Coordinator Setup
 ///
 /// The body implementation automatically:
-/// 1. Calls `viewModel.onAppear()` on view appearance
-/// 2. Sets the navigation coordinator via `viewModel.setCoordinator()`
+/// 1. Calls `model.onAppear()` on view appearance
+/// 2. Sets the navigation coordinator via `model.setCoordinator()`
 ///
 /// This ensures the ViewModel has access to navigation capabilities.
 ///

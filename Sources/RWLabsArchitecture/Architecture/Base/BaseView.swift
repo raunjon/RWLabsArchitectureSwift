@@ -21,7 +21,7 @@ import SwiftUI
 ///
 /// ```
 /// BaseView
-///     ├─ viewModel: VM (state management)
+///     ├─ model: VM (state management)
 ///     ├─ content: Content (UI rendering)
 ///     └─ body (lifecycle + content)
 /// ```
@@ -38,13 +38,13 @@ import SwiftUI
 /// struct ProductListView: BaseView {
 ///     typealias VM = ProductListViewModel
 ///
-///     @StateObject var viewModel: VM
+///     @StateObject var model: VM
 ///
 ///     var content: some View {
-///         List(viewModel.products, id: \.id) { product in
+///         List(model.products, id: \.id) { product in
 ///             ProductRow(product: product)
 ///                 .onTapGesture {
-///                     viewModel.send(.productTapped(product))
+///                     model.send(.productTapped(product))
 ///                 }
 ///         }
 ///         .navigationTitle("Products")
@@ -55,13 +55,13 @@ import SwiftUI
 /// ## With Loading State
 /// ```swift
 /// struct UserProfileView: BaseView {
-///     @StateObject var viewModel: UserProfileViewModel
+///     @StateObject var model: UserProfileViewModel
 ///
 ///     var content: some View {
 ///         ZStack {
-///             if viewModel.isLoading {
+///             if model.isLoading {
 ///                 ProgressView()
-///             } else if let user = viewModel.user {
+///             } else if let user = model.user {
 ///                 ProfileContentView(user: user)
 ///             } else {
 ///                 EmptyStateView()
@@ -74,17 +74,17 @@ import SwiftUI
 /// ## With Toolbar
 /// ```swift
 /// struct SettingsView: BaseView {
-///     @StateObject var viewModel: SettingsViewModel
+///     @StateObject var model: SettingsViewModel
 ///
 ///     var content: some View {
 ///         Form {
 ///             Section("Appearance") {
-///                 Toggle("Dark Mode", isOn: $viewModel.isDarkMode)
+///                 Toggle("Dark Mode", isOn: $model.isDarkMode)
 ///             }
 ///
 ///             Section("Account") {
 ///                 Button("Sign Out") {
-///                     viewModel.send(.signOutTapped)
+///                     model.send(.signOutTapped)
 ///                 }
 ///             }
 ///         }
@@ -92,7 +92,7 @@ import SwiftUI
 ///         .toolbar {
 ///             ToolbarItem(placement: .navigationBarTrailing) {
 ///                 Button("Done") {
-///                     viewModel.send(.doneTapped)
+///                     model.send(.doneTapped)
 ///                 }
 ///             }
 ///         }
@@ -102,13 +102,13 @@ import SwiftUI
 ///
 /// # Lifecycle Handling
 ///
-/// The default `body` implementation automatically calls `viewModel.onAppear()`:
+/// The default `body` implementation automatically calls `model.onAppear()`:
 /// ```swift
 /// public extension BaseView {
 ///     var body: some View {
 ///         content
 ///             .onAppear {
-///                 viewModel.onAppear()  // Automatic
+///                 model.onAppear()  // Automatic
 ///             }
 ///     }
 /// }
@@ -128,7 +128,7 @@ import SwiftUI
 ///
 /// BaseView provides a default body that:
 /// - Renders the `content` property
-/// - Calls `viewModel.onAppear()` when view appears
+/// - Calls `model.onAppear()` when view appears
 /// - Can be overridden for custom behavior (e.g., when using with Navigatable)
 ///
 /// # Associated Types
@@ -139,7 +139,7 @@ import SwiftUI
 /// # Requirements
 ///
 /// Conforming types must provide:
-/// - `var viewModel: VM` - The ViewModel instance
+/// - `var model: VM` - The ViewModel instance
 /// - `var content: Content` - The content view
 ///
 /// # When to Use
@@ -175,16 +175,16 @@ public protocol BaseView: View {
     ///
     /// Typically a `@StateObject` or `@ObservedObject` property:
     /// ```swift
-    /// @StateObject var viewModel: ProductListViewModel
+    /// @StateObject var model: ProductListViewModel
     /// ```
-    var viewModel: VM { get set }
+    var model: VM { get set }
 
     /// The content to display
     ///
     /// Should contain only UI rendering logic, no navigation or lifecycle:
     /// ```swift
     /// var content: some View {
-    ///     List(viewModel.items) { item in
+    ///     List(model.items) { item in
     ///         ItemRow(item: item)
     ///     }
     /// }
@@ -199,7 +199,7 @@ public extension BaseView {
     ///
     /// This implementation:
     /// - Renders the `content` view
-    /// - Automatically calls `viewModel.onAppear()` when view appears
+    /// - Automatically calls `model.onAppear()` when view appears
     ///
     /// # Override
     ///
@@ -217,7 +217,7 @@ public extension BaseView {
     ///     ↓
     /// .onAppear fires
     ///     ↓
-    /// viewModel.onAppear() called
+    /// model.onAppear() called
     ///     ↓
     /// ViewModel loads data, updates state
     ///     ↓
@@ -226,7 +226,7 @@ public extension BaseView {
     var body: some View {
         content
             .onAppear {
-                viewModel.onAppear()
+                model.onAppear()
             }
     }
 }
@@ -261,7 +261,7 @@ public extension BaseView {
 
  ## Automatic Lifecycle
 
- The default body implementation ensures `viewModel.onAppear()` is always
+ The default body implementation ensures `model.onAppear()` is always
  called without developers needing to remember to add it. This:
  - Reduces boilerplate
  - Prevents bugs from missing lifecycle calls

@@ -35,8 +35,8 @@ protocol AnyConnection: AnyObject {
 /// }
 ///
 /// // Transparent access
-/// viewModel.connections.entry.send(.update)
-/// viewModel.connections.entry.state.title
+/// model.connections.entry.send(.update)
+/// model.connections.entry.state.title
 /// ```
 @MainActor
 @dynamicMemberLookup
@@ -374,13 +374,13 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
         isActive = true
 
         // Create or get the ViewModel
-        let viewModel = connection.createOrGetViewModel(with: childState)
+        let model = connection.createOrGetViewModel(with: childState)
 
         // Set the state
-        viewModel.state = childState
+        model.state = childState
         
         // Observe child state changes
-        observeChildStateChanges(viewModel)
+        observeChildStateChanges(model)
     }
 
     private func deactivateConnection() {
@@ -391,19 +391,19 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
     }
 
     private func syncStateToViewModel(_ newState: To.State) {
-        guard let viewModel = connection.model else { return }
-        guard viewModel.state != newState else { return }
+        guard let model = connection.model else { return }
+        guard model.state != newState else { return }
         guard newState.destination != nil else { return }
         // Only update if state is different to avoid cycles
         // Simple approach: always update (ViewModel can optimize internally)
-        viewModel.state = newState
+        model.state = newState
     }
 
-    private func observeChildStateChanges(_ viewModel: To) {
+    private func observeChildStateChanges(_ model: To) {
         // Observe child ViewModel state changes and sync back to parent
         // We need to observe objectWillChange since we can't access $state on the protocol
         // But we'll handle it synchronously by checking state immediately in the handler
-        childStateCancellable = viewModel.objectWillChange
+        childStateCancellable = model.objectWillChange
             .sink { [weak self] _ in
                 // Use DispatchQueue.main.async to ensure state has actually changed
                 DispatchQueue.main.async {
@@ -413,12 +413,12 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
     }
 
     private func syncChildStateToParent() {
-        guard let viewModel = connection.model,
+        guard let model = connection.model,
               let parent = parentViewModel else {
             return
         }
 
-        let newChildState = viewModel.state
+        let newChildState = model.state
 
         // Use generic helper to properly update parent state
         updateParentState(parent, childState: newChildState)

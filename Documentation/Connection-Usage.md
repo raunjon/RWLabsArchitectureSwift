@@ -86,7 +86,7 @@ class EntriesViewModel: BaseViewModel<...> {
     override func send(_ action: EntriesAction) {
         switch action {
         case .applyFilter:
-            // ✅ Transparent access - no .viewModel needed!
+            // ✅ Transparent access - no .model needed!
             connections.filter.send(.apply)
 
         case .selectEntry(let entry):
@@ -125,26 +125,26 @@ class EntriesViewModel: BaseViewModel<...> {
 
 ```swift
 struct EntriesView: View {
-    @ObservedObject var viewModel: EntriesViewModel
+    @ObservedObject var model: EntriesViewModel
 
     var body: some View {
         VStack {
             // ✅ Direct access to child ViewModel
-            FilterBar(viewModel: viewModel.connections.filter.viewModel)
+            FilterBar(model: model.connections.filter.model)
 
-            List(viewModel.state.entries) { entry in
+            List(model.state.entries) { entry in
                 EntryRow(entry: entry)
                     .onTapGesture {
-                        viewModel.send(.selectEntry(entry))
+                        model.send(.selectEntry(entry))
                     }
             }
         }
-        .sheet(item: $viewModel.destination) { destination in
+        .sheet(item: $model.destination) { destination in
             switch destination {
             case .detail:
                 // ✅ Access child ViewModel for detail
-                if let detailVM = viewModel.state.selectedEntryViewModel {
-                    EntryDetailView(viewModel: detailVM)
+                if let detailVM = model.state.selectedEntryViewModel {
+                    EntryDetailView(model: detailVM)
                 }
             }
         }
@@ -160,7 +160,7 @@ Use `@dynamicMemberLookup` to access ViewModel members directly:
 
 ```swift
 // Instead of:
-connections.filter.viewModel.send(.apply)
+connections.filter.model.send(.apply)
 
 // You can write:
 connections.filter.send(.apply)
@@ -172,8 +172,8 @@ connections.filter.state.searchText
 ViewModels are created once and stored in state:
 
 ```swift
-let filter1 = viewModel.connections.filter
-let filter2 = viewModel.connections.filter
+let filter1 = model.connections.filter
+let filter2 = model.connections.filter
 // filter1 === filter2  ✅ Same instance!
 ```
 
@@ -274,19 +274,19 @@ connections.filter.clear()
 
 ### Properties
 
-#### `.viewModel`
+#### `.model`
 Access the underlying ViewModel instance.
 
 ```swift
-let vm = connections.filter.viewModel
+let vm = connections.filter.model
 ```
 
 #### Dynamic member lookup
 Access ViewModel members transparently.
 
 ```swift
-connections.filter.send(.apply)      // Calls filter.viewModel.send(.apply)
-connections.filter.state.searchText  // Calls filter.viewModel.state.searchText
+connections.filter.send(.apply)      // Calls filter.model.send(.apply)
+connections.filter.state.searchText  // Calls filter.model.state.searchText
 ```
 
 ## Best Practices

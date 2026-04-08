@@ -117,32 +117,32 @@ extension ProfileViewModel {
 
 ```swift
 struct ProfileView: View {
-    @StateObject var viewModel: ProfileViewModel
+    @StateObject var model: ProfileViewModel
 
     var body: some View {
         VStack {
             // ... profile UI ...
 
             Button("Edit Bio") {
-                viewModel.editBio()
+                model.editBio()
             }
         }
-        .sheet(item: $viewModel.state.destination) { destination in
+        .sheet(item: $model.state.destination) { destination in
             switch destination {
             case .bioEditor:
                 // The connection automatically provides the ViewModel
-                if let bioEditorVM = viewModel.connections.bioEditor.model {
-                    TextEntryView(viewModel: bioEditorVM)
+                if let bioEditorVM = model.connections.bioEditor.model {
+                    TextEntryView(model: bioEditorVM)
                 }
 
             case .locationEditor:
-                if let locationEditorVM = viewModel.connections.locationEditor.model {
-                    TextEntryView(viewModel: locationEditorVM)
+                if let locationEditorVM = model.connections.locationEditor.model {
+                    TextEntryView(model: locationEditorVM)
                 }
 
             case .settings:
-                if let settingsVM = viewModel.connections.settings.model {
-                    SettingsView(viewModel: settingsVM)
+                if let settingsVM = model.connections.settings.model {
+                    SettingsView(model: settingsVM)
                 }
             }
         }
@@ -176,15 +176,15 @@ Use dynamic member lookup for convenient access:
 
 ```swift
 // Access child ViewModel properties directly
-if let text = viewModel.connections.bioEditor.state?.text {
+if let text = model.connections.bioEditor.state?.text {
     print("Current bio text: \(text)")
 }
 
 // Send actions to child
-viewModel.connections.bioEditor.send?(.textChanged("New bio"))
+model.connections.bioEditor.send?(.textChanged("New bio"))
 
 // Check if connection is active
-if viewModel.connections.bioEditor.model != nil {
+if model.connections.bioEditor.model != nil {
     print("Bio editor is active")
 }
 ```
@@ -245,11 +245,11 @@ Child VM State Change → Parent Destination Enum Update → SwiftUI Re-renders
 This pattern is ideal for sheets, popovers, and full-screen covers:
 
 ```swift
-.sheet(item: $viewModel.state.destination) { destination in
+.sheet(item: $model.state.destination) { destination in
     switch destination {
     case .bioEditor:
-        if let vm = viewModel.connections.bioEditor.model {
-            TextEntryView(viewModel: vm)
+        if let vm = model.connections.bioEditor.model {
+            TextEntryView(model: vm)
         }
     }
 }
@@ -428,31 +428,31 @@ class ProfileViewModel: BaseViewModel<State, Action, Output, Destination> {
 // MARK: - SwiftUI View
 
 struct ProfileView: View {
-    @StateObject var viewModel: ProfileViewModel
+    @StateObject var model: ProfileViewModel
 
     var body: some View {
         VStack {
             // Profile display
-            Text(viewModel.state.profile?.bio ?? "No bio")
+            Text(model.state.profile?.bio ?? "No bio")
 
             Button("Edit Bio") {
-                viewModel.editBio()
+                model.editBio()
             }
 
             Button("Change Avatar") {
-                viewModel.changeAvatar()
+                model.changeAvatar()
             }
         }
-        .sheet(item: $viewModel.state.destination) { destination in
+        .sheet(item: $model.state.destination) { destination in
             switch destination {
             case .bioEditor:
-                if let vm = viewModel.connections.bioEditor.model {
-                    TextEntryView(viewModel: vm)
+                if let vm = model.connections.bioEditor.model {
+                    TextEntryView(model: vm)
                 }
 
             case .avatarPicker:
-                if let vm = viewModel.connections.avatarPicker.model {
-                    ImagePickerView(viewModel: vm)
+                if let vm = model.connections.avatarPicker.model {
+                    ImagePickerView(model: vm)
                 }
             }
         }
@@ -464,7 +464,7 @@ struct ProfileView: View {
 
 ### Connection Returns nil
 
-**Problem:** `viewModel.connections.childVM.model` returns `nil`
+**Problem:** `model.connections.childVM.model` returns `nil`
 
 **Solution:** Ensure:
 1. The destination enum is set to the matching case
