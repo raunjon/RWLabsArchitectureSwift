@@ -28,7 +28,7 @@ import Combine
 /// ```
 public protocol HasConnections: AnyObject {
     /// The type of connections this ViewModel uses
-    associatedtype ConnectionsType: ViewModelConnections
+    associatedtype ConnectionsType: Connectable
 
     /// The connections instance managing child ViewModels
     var connections: ConnectionsType { get }
@@ -67,7 +67,7 @@ public protocol HasConnections: AnyObject {
 ///     }()
 /// }
 /// ```
-public protocol ViewModelConnections: AnyObject {
+public protocol Connectable: AnyObject {
 
     // MARK: - Associated Types
 
@@ -115,7 +115,7 @@ extension ObservableObject {
     ///     }
     /// }
     /// ```
-    func createConnections<T: ViewModelConnections>(_ connectionsType: T.Type) -> T where T.ParentViewModel == Self {
+    func createConnections<T: Connectable>(_ connectionsType: T.Type) -> T where T.ParentViewModel == Self {
         T(parent: self)
     }
 }

@@ -8,26 +8,6 @@
 import Combine
 import SwiftUI
 
-public protocol OutputableComponent {
-    associatedtype Output: ViewModelOutput
-    var outputs: AnyPublisher<Output, Never> { get }
-    var outputSubject: PassthroughSubject<Output, Never> { get }
-    var outputHandler: ((Output) -> Void)? { get set }
-    var cancellables: Set<AnyCancellable> { get set }
-    func sendOutput(_ output: Output)
-}
-
-extension OutputableComponent where Self: AnyObject {
-    
-    public var outputs: AnyPublisher<Output, Never> {
-        outputSubject.eraseToAnyPublisher()
-    }
-    
-    /// Send an output (side effect)
-    public func sendOutput(_ output: Output) {
-        outputSubject.send(output)
-    }
-}
 // MARK: - Base ViewModel Implementation
 /// Base class providing common ViewModel functionality
 @MainActor
@@ -52,8 +32,15 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
         get {
             self.state.destination
         } set {
-            self.state.destination = newValue
+            self.state.destination = nil
+            Async.main {
+                self.state.destination = newValue
+            }
         }
+    }
+    
+    public func dismiss() {
+        self.destination = nil
     }
     
     required public init(initialState: State) {
@@ -76,7 +63,7 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
     }
 
     /// Handle errors
-    public func handleError(_ error: Error) {
+    open func handleError(_ error: Error) {
         state.error = error
     }
 
@@ -101,7 +88,6 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
     }
     
     open func onAppear() {
-        fatalError("Must override onAppear() in subclass")
     }
         
     @discardableResult
@@ -154,6 +140,40 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
     func areEqual<A: Equatable>(_ lhs: A, _ rhs: Any) -> Bool {
         lhs == (rhs as? A)
     }
+    
+    
+    public final func performAsync<T>(
+        _ operation: @escaping () async throws -> T,
+        response: @escaping (T) -> Void
+    ) {
+        startLoading()
+        
+        Task {
+            defer { stopLoading() } // always runs
+            
+            do {
+                let result = try await operation()
+                response(result)
+            } catch {
+                handleError(error)
+            }
+        }
+    }
+    
+    
+    public final func perform<T>(
+        _ operation: @escaping () async throws -> T
+    ) -> Void {
+        startLoading()
+        Task {
+            defer { stopLoading() } // always runs
+            do {
+              try await operation()
+            } catch {
+                handleError(error)
+            }
+        }
+    }
 }
 
 // MARK: - Empty Implementations
@@ -167,7 +187,7 @@ public struct EmptyState: ViewModelState {
     public init() {}
 }
 
-public struct EmptyDestination: @preconcurrency RouteDestination {
+public struct EmptyDestination: @preconcurrency ViewModelDestination {
     public static let featureId: String = "empty"
     
     public static var initialDestination: EmptyDestination { EmptyDestination() }

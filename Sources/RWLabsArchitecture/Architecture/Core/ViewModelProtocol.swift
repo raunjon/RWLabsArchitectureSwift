@@ -300,7 +300,7 @@ public protocol ViewModelOutput {}
 /// - `outputs`: Publisher for side effects
 /// - `init(initialState:)`: Required initializer
 ///
-public protocol ViewModel: StateComponent, Identifiable, Equatable {
+public protocol ViewModel: StateComponent, Identifiable, Equatable, Hashable {
     /// The State type for this ViewModel
     associatedtype State: ViewModelState
 

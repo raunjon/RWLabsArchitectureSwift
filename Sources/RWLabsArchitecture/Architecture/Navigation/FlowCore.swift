@@ -512,7 +512,7 @@ public final class FlowContext: ObservableObject, @MainActor Identifiable {
     ///   - animated: Whether to animate the navigation
     ///
     /// **Note**: Implementation commented out pending refactoring
-    public func navigate(to destination: any RouteDestination, animated: Bool = true) {
+    public func navigate(to destination: any ViewModelDestination, animated: Bool = true) {
         // navigator.navigate(to: destination, animated: animated)
     }
 }

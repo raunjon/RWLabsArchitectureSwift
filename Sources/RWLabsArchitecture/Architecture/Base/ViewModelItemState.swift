@@ -6,12 +6,10 @@
 //
 
 import Combine
-import RWLabsDataServiceKit
 
 public protocol ViewModelItemState: ViewModelState, Identifiable, Equatable, Hashable {
     associatedtype Item: Codable&Identifiable
     var item: Item { get set }
-//    init(item: Item)
 }
 
 public extension ViewModelItemState {

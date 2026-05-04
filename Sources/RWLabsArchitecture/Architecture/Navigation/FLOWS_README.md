@@ -81,12 +81,12 @@ struct OnboardingFlow: Flow {
 
     func canEnter() -> Bool {
         // Only show onboarding if not seen before
-        return !UserDefaults.standard.bool(forKey: "hasSeenOnboarding")
+        return !UserDefaults.app.bool(forKey: "hasSeenOnboarding")
     }
 
     func onExit() {
         // Mark as completed
-        UserDefaults.standard.set(true, forKey: "hasSeenOnboarding")
+        UserDefaults.app.set(true, forKey: "hasSeenOnboarding")
     }
 }
 

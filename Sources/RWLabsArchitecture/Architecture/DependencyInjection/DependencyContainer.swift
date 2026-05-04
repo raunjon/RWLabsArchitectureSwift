@@ -189,7 +189,6 @@ public final class DependencyContainer {
         let key = String(describing: type)
         dependencies[key] = instance
     }
-
     // MARK: - Resolution
 
     /// Resolves a dependency

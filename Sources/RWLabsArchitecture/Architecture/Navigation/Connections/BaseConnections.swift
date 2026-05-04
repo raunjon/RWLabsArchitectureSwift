@@ -83,7 +83,7 @@ import CasePathsCore
 /// - **Memory Safe**: Parent is automatically weak to prevent retain cycles
 /// - **Main Actor Isolated**: Safe for SwiftUI integration
 @MainActor
-open class BaseConnections<ParentViewModel: ViewModel>: @MainActor ViewModelConnections {
+open class ViewModelConnections<ParentViewModel: ViewModel>: @MainActor Connectable {
 
     // MARK: - Properties
 //    public typealias C1<From: ViewModelState, Case: CasePathable> = CaseConnection<From, ParentViewModel, Case>
@@ -208,7 +208,7 @@ class ExampleParentViewModel: ObservableObject {
         Connections(parent: self)
     }()
 
-    class Connections: ViewModelConnections {
+    class Connections: Connectable {
         weak var parent: ExampleParentViewModel?
 
         required init(parent: ExampleParentViewModel) {
@@ -269,7 +269,7 @@ class ExampleTabViewModel: ObservableObject {
         Connections(parent: self)
     }()
 
-    class Connections: ViewModelConnections {
+    class Connections: Connectable {
         weak var parent: ExampleTabViewModel?
 
         required init(parent: ExampleTabViewModel) {
@@ -325,7 +325,7 @@ class ExampleListViewModel: ObservableObject {
         Connections(parent: self)
     }()
 
-    class Connections: ViewModelConnections {
+    class Connections: Connectable {
         weak var parent: ExampleListViewModel?
 
         required init(parent: ExampleListViewModel) {

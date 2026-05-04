@@ -36,30 +36,20 @@ import Combine
 /// }
 /// ```
 
-public protocol RouteDestinationPresentable: RouteDestination {
+public protocol RouteDestinationPresentable: ViewModelDestination {
     var presentationStyle: PresentationStyle { get }
 }
-public protocol RouteDestination: Hashable, Identifiable, Equatable {
+public protocol ViewModelDestination: Hashable, Identifiable, Equatable {
 
     // MARK: - Required Properties
 
-    /// Unique identifier for the feature this destination belongs to
-//    static var featureId: String { get }
-
-    /// The initial/default destination for this feature
-//    static var initialDestination: Self { get }
-
-    /// How this destination should be presented
-//    var presentationStyle: PresentationStyle { get }
-
-    /// Optional metadata for platform-specific customization
     var metadata: [String: String] { get }
 }
 
 // MARK: - Default Implementations
 
 /// Default implementation for metadata (optional)
-public extension RouteDestination {
+public extension ViewModelDestination {
     var metadata: [String: String] { [:] }
     
     public static func == (lhs: Self, rhs: Self) -> Bool {
@@ -68,7 +58,7 @@ public extension RouteDestination {
 }
 
 /// Default implementation for Identifiable conformance
-public extension RouteDestination {
+public extension ViewModelDestination {
     var id: UUID {
         UUID()
     }
@@ -166,7 +156,7 @@ public struct AnyDestination: Hashable, Identifiable {
 
     /// Creates a type-erased destination from a concrete destination
     /// - Parameter destination: The concrete destination to wrap
-    public init<D: RouteDestination>(_ destination: D) {
+    public init<D: ViewModelDestination>(_ destination: D) {
         self.id = String(describing: destination)
 //        self.presentationStyle = destination.presentationStyle
         self.metadata = destination.metadata
@@ -193,7 +183,7 @@ public struct AnyDestination: Hashable, Identifiable {
     /// Attempts to cast the erased destination back to its concrete type
     /// - Parameter type: The concrete type to cast to
     /// - Returns: The destination as the concrete type, or `nil` if casting fails
-    public func `as`<D: RouteDestination>(_ type: D.Type) -> D? {
+    public func `as`<D: ViewModelDestination>(_ type: D.Type) -> D? {
         base as? D
     }
 }
@@ -274,11 +264,11 @@ public struct NavigationState: Equatable {
 
     /// The navigation stack for this feature
     /// Each element represents a pushed destination in the navigation hierarchy
-    public var featureStack: [any RouteDestination] = []
+    public var featureStack: [any ViewModelDestination] = []
 
     /// Currently presented destinations (modals, sheets, alerts, etc.)
     /// Only one can be presented at a time
-    public var presentedDestinations: (any RouteDestination)?
+    public var presentedDestinations: (any ViewModelDestination)?
     
     // MARK: - Initialization
 

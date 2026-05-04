@@ -310,10 +310,10 @@ Save and restore navigation state easily:
 ```swift
 // Save
 let stateData = try JSONEncoder().encode(model.state)
-UserDefaults.standard.set(stateData, forKey: "appState")
+UserDefaults.app.set(stateData, forKey: "appState")
 
 // Restore (including navigation position!)
-let stateData = UserDefaults.standard.data(forKey: "appState")
+let stateData = UserDefaults.app.data(forKey: "appState")
 model.state = try JSONDecoder().decode(State.self, from: stateData)
 ```
 

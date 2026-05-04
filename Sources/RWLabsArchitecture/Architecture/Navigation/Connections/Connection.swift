@@ -96,7 +96,7 @@ public final class Connection<To: ViewModel>: @MainActor AnyConnection {
     public func connect<From: ViewModel, Case: CasePathable>(
         state stateKeyPath: WritableKeyPath<From.State, Case?>,
         case casePath: CaseKeyPath<Case, To.State>, parent: From?
-    ) -> CaseConnection<From, To, Case> {
+    ) -> CaseConnection<From,To,Case> {
         return CaseConnection(
             connection: self,
             stateKeyPath: stateKeyPath,
@@ -104,18 +104,79 @@ public final class Connection<To: ViewModel>: @MainActor AnyConnection {
             parent: parent
         )
     }
-    public func connect1<From: ViewModel, Case: CasePathable>(
-        state stateKeyPath: WritableKeyPath<From.State, Case?>,
-        case casePath: CaseKeyPath<Case, To.State>, parent: From?
-    ) -> To? {
-        return CaseConnection(
-            connection: self,
-            stateKeyPath: stateKeyPath,
-            casePath: casePath,
-            parent: parent
-        ).model
+    
+    public func connect<From:ViewModel>(from parent: From,
+                                        to keyPath: WritableKeyPath<From.State, To.State>
+    ) -> To {
+        self.parentViewModel = parent
+        let state = parent.state[keyPath: keyPath]
+        return activateConnection(from: parent, to: state, keyPath: keyPath)
+    }
+    
+    private func activateConnection<From:ViewModel>(from parent: From, to childState: To.State, keyPath: WritableKeyPath<From.State, To.State>) -> To {
+        isActive = true
+
+        // Create or get the ViewModel
+        let model = createOrGetViewModel(with: childState)
+
+        // Set the state
+        model.state = childState
+        
+        // Observe child state changes
+        observeChildStateChanges(from: parent, to: model, keyPath: keyPath)
+        
+        return model
+    }
+    
+    
+    private func observeChildStateChanges<From:ViewModel>(from parent: From, to model: To, keyPath: WritableKeyPath<From.State, To.State>) {
+        // Observe child ViewModel state changes and sync back to parent
+        // We need to observe objectWillChange since we can't access $state on the protocol
+        // But we'll handle it synchronously by checking state immediately in the handler
+        childStateCancellable = model.objectWillChange
+            .sink { [weak self] _ in
+                // Use DispatchQueue.main.async to ensure state has actually changed
+                DispatchQueue.main.async {
+                    self?.syncChildStateToParent(from: parent, stateKeyPath: keyPath)
+                }
+            }
     }
 
+    private func syncChildStateToParent<From: ViewModel>(from parent: From, stateKeyPath: WritableKeyPath<From.State, To.State>) {
+        guard let model = model else {
+            return
+        }
+
+        let newChildState = model.state
+
+        // Use generic helper to properly update parent state
+        updateParentState(parent, childState: newChildState, stateKeyPath: stateKeyPath)
+    }
+
+    private func updateParentState<From: ViewModel>(_ parent: From, childState: To.State, stateKeyPath: WritableKeyPath<From.State, To.State>) {
+        guard var parentState = parent.state as? From.State else { return }
+
+        // Get current destination
+        var destination = parentState[keyPath: stateKeyPath]
+
+        // Update the case with new state
+        do {
+
+            // Update parent state
+            parentState[keyPath: stateKeyPath] = destination
+
+            // Update using the proper typed method
+            parent.updateState { state in
+                if var typedState = state as? From.State {
+                    typedState[keyPath: stateKeyPath] = destination
+                    state = typedState as! From.State
+                }
+            }
+        } catch {
+            // Case path doesn't match current enum case - this is normal
+        }
+    }
+  
     // MARK: - ViewModel Access
 
     
@@ -219,7 +280,7 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
 
     // MARK: - Properties
 
-    private let connection: Connection<To>
+    let connection: Connection<To>
     private let stateKeyPath: WritableKeyPath<From.State, Case?>
     private let casePath: CaseKeyPath<Case, To.State>
 
@@ -354,18 +415,21 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePath
 
         if let childState = childState {
             // Case is active - activate or update connection
-            if !isActive {
+            if !self.isActive {
                 print("✅ CaseConnection: Activating connection")
-                activateConnection(with: childState)
+                self.activateConnection(with: childState)
             } else {
                 print("🔄 CaseConnection: Syncing state to existing connection")
-                syncStateToViewModel(childState)
+                self.syncStateToViewModel(childState)
             }
+
         } else {
             // Case is inactive - deactivate connection
             if isActive {
-                print("❌ CaseConnection: Deactivating connection")
-                deactivateConnection()
+                if destination == nil {
+                    print("❌ CaseConnection: Deactivating connection")
+                    deactivateConnection()
+                }
             }
         }
     }
@@ -487,3 +551,14 @@ extension StateComponent {
     }
 }
 
+public enum Async: AsyncService {
+   public static func main(_ block: @escaping () -> Void) { DispatchQueue.main.async(execute: block) }
+   public static func background(qos: DispatchQoS.QoSClass = .default, _ block: @escaping () -> Void) { DispatchQueue.global(qos: qos).async(execute: block) }
+   public static func after(_ delay: TimeInterval, _ block: @escaping () -> Void) { DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: block) }
+}
+
+protocol AsyncService {
+    static func main(_ block: @escaping @Sendable () -> Void)
+    static func background(qos: DispatchQoS.QoSClass, _ block: @escaping () -> Void)
+    static func after(_ delay: TimeInterval, _ block: @escaping () -> Void)
+}

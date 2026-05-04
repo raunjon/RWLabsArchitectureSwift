@@ -166,7 +166,7 @@ import SwiftUI
 /// content in a NavigationStack with routing capabilities.
 public protocol BaseView: View {
     /// The ViewModel type managing this view's state
-    associatedtype VM: ViewModel
+    associatedtype Model: ViewModel
 
     /// The content view type
     associatedtype Content: View
@@ -177,7 +177,7 @@ public protocol BaseView: View {
     /// ```swift
     /// @StateObject var model: ProductListViewModel
     /// ```
-    var model: VM { get set }
+    var model: Model { get set }
 
     /// The content to display
     ///
@@ -227,6 +227,51 @@ public extension BaseView {
         content
             .onAppear {
                 model.onAppear()
+            }
+    }
+}
+
+public protocol Tappable {
+    func onTap()
+}
+
+public extension BaseView where Self:Tappable {
+    /// Default body implementation with automatic lifecycle handling
+    ///
+    /// This implementation:
+    /// - Renders the `content` view
+    /// - Automatically calls `model.onAppear()` when view appears
+    ///
+    /// # Override
+    ///
+    /// This implementation is automatically overridden when BaseView is
+    /// combined with Navigatable (via ComponentView typealias).
+    ///
+    /// # Example Flow
+    ///
+    /// ```
+    /// View appears
+    ///     ↓
+    /// body is called
+    ///     ↓
+    /// content is rendered
+    ///     ↓
+    /// .onAppear fires
+    ///     ↓
+    /// model.onAppear() called
+    ///     ↓
+    /// ViewModel loads data, updates state
+    ///     ↓
+    /// View re-renders with new state
+    /// ```
+    var body: some View {
+        content
+            .contentShape(Rectangle())
+            .onAppear {
+                model.onAppear()
+            }
+            .onTapGesture {
+                onTap()
             }
     }
 }

@@ -302,6 +302,17 @@ import SwiftUI
 public protocol RoutableView: BaseView {}
 public protocol ComponentView: BaseView {}
 
+public extension ComponentView {
+    func button<Label: View>(_ action: @escaping @autoclosure () -> Model.Action, file: StaticString = #filePath, line: UInt = #line, @ViewBuilder label: () -> Label) -> some View {
+        Button(action: {
+            model.send(action())
+        }) {
+            content
+        }
+    }
+}
+
+
 public protocol Destinatationable: BaseView {
     /// The destination view type returned by `destinationView(for:)`
     associatedtype DestinationView: View
@@ -329,7 +340,7 @@ public protocol Destinatationable: BaseView {
     ///     }
     /// }
     /// ```
-    func destinationView(for destination: VM.State.Destination) -> DestinationView
+    func destinationView(for destination: Model.State.Destination) -> DestinationView
 }
 
 // MARK: - Navigatable Body Implementation

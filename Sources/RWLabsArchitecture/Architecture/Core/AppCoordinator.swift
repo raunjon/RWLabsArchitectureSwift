@@ -227,7 +227,7 @@ public final class AppCoordinator: ObservableObject {
     /// # Example
     /// ```swift
     /// AppCoordinator.shared.onSetupInitialFlow = { flowCoordinator in
-    ///     let isLoggedIn = UserDefaults.standard.bool(forKey: "isLoggedIn")
+    ///     let isLoggedIn = UserDefaults.app.bool(forKey: "isLoggedIn")
     ///
     ///     if isLoggedIn {
     ///         let mainFlow = MainAppFlow()

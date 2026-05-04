@@ -55,12 +55,12 @@ public protocol FeatureRouter {
     /// Converts a route to a destination if this feature can handle it
     /// - Parameter route: The route to convert
     /// - Returns: A destination if the route matches this feature, `nil` otherwise
-    func destination(for route: Route) -> (any RouteDestination)?
+    func destination(for route: Route) -> (any ViewModelDestination)?
 
     /// Converts a destination back to a route for URL generation
     /// - Parameter destination: The destination to convert
     /// - Returns: A route if the destination belongs to this feature, `nil` otherwise
-    func route(for destination: any RouteDestination) -> Route?
+    func route(for destination: any ViewModelDestination) -> Route?
 }
 
 // MARK: - Default Implementations
@@ -79,7 +79,7 @@ public extension FeatureRouter {
     ///   - destination: The destination to generate a URL for
     ///   - scheme: The URL scheme (default: `"myapp"`)
     /// - Returns: The generated URL, or `nil` if the destination doesn't belong to this feature
-    func url(for destination: any RouteDestination, scheme: String = "myapp") -> URL? {
+    func url(for destination: any ViewModelDestination, scheme: String = "myapp") -> URL? {
         guard let route = route(for: destination) else { return nil }
         return route.url(scheme: scheme)
     }

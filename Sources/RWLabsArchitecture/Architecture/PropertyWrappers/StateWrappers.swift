@@ -786,18 +786,55 @@ public struct Atomic<Value> {
 /// For high-frequency updates, consider batching changes.
 
 @propertyWrapper
-public struct Preference<Value> {
+public struct
+Preference<Value> {
 
     private let key: String
 
-    public init(_ key: String = #function) {
+    public init(_ key: RawRepresentable<String>) {
+        self.key = key.rawValue
+    }
+    
+    public init(_ key: String) {
         self.key = key
     }
 
     public var wrappedValue: Value? {
-        get { UserDefaults.standard.object(forKey: key) as? Value }
-        set { UserDefaults.standard.set(newValue, forKey: key) }
+        get { UserDefaults.app.object(forKey: key) as? Value }
+        set { UserDefaults.app.set(newValue, forKey: key) }
     }
+}
+
+@propertyWrapper
+public struct
+StoredObject<Value:Codable> {
+
+    private let key: String
+    private var data: Data?
+    
+    public init(_ key: String = #function) {
+        self.key = key
+        data = UserDefaults.app.object(forKey: key) as? Data
+    }
+
+    public var wrappedValue: Value? {
+        get {
+            guard let data else { return nil }
+            return try? JSONDecoder().decode(Value.self, from: data)
+        }
+        set { data = try? JSONEncoder().encode(newValue) }
+    }
+    
+    var value: Value?  {
+        get {
+            guard let data = data else { return nil }
+            return try? JSONDecoder().decode(Value.self, from: data)
+        }
+        set {
+            data = try? JSONEncoder().encode(newValue)
+        }
+    }
+
 }
 
 @propertyWrapper
@@ -1135,4 +1172,9 @@ public struct Copyable<Value: NSCopying> {
             value = newValue.copy() as! Value
         }
     }
+}
+
+extension UserDefaults {
+    open class var suite: String {""}
+    public class var app: UserDefaults { UserDefaults(suiteName: suite) ?? .standard }
 }
