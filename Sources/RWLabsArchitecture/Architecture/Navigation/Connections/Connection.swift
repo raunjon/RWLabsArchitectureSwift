@@ -9,6 +9,18 @@
 import SwiftUI
 import Combine
 import CasePaths
+import ObjectiveC
+
+// MARK: - Connection Retention
+
+/// `connect(from:to:)` returns the bare child ViewModel (not the `Connection` wrapper),
+/// so nothing keeps the `Connection` — and therefore its `outputCancellable` — alive.
+/// Without this, the `Connection` is deallocated the instant `connect` returns, which
+/// cancels the Combine subscription and silently drops the output handler before it can
+/// ever fire. Tying the `Connection`'s lifetime to the child it produced keeps the
+/// subscription alive for exactly as long as the child ViewModel is retained.
+@MainActor
+private var connectionRetentionKey: UInt8 = 0
 
 // MARK: - AnyConnection Protocol
 
@@ -110,7 +122,9 @@ public final class Connection<To: ViewModel>: @MainActor AnyConnection {
     ) -> To {
         self.parentViewModel = parent
         let state = parent.state[keyPath: keyPath]
-        return activateConnection(from: parent, to: state, keyPath: keyPath)
+        let model = activateConnection(from: parent, to: state, keyPath: keyPath)
+        objc_setAssociatedObject(model, &connectionRetentionKey, self, .OBJC_ASSOCIATION_RETAIN)
+        return model
     }
     
     private func activateConnection<From:ViewModel>(from parent: From, to childState: To.State, keyPath: WritableKeyPath<From.State, To.State>) -> To {

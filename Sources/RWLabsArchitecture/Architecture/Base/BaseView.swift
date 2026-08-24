@@ -189,7 +189,7 @@ public protocol BaseView: View {
     ///     }
     /// }
     /// ```
-    var content: Content { get }
+    @ViewBuilder var content: Content { get }
 }
 
 // MARK: - Default Body Implementation

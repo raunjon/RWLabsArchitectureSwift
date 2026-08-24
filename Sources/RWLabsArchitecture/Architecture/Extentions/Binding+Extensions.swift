@@ -21,7 +21,6 @@ public extension Binding where Value == String? {
     }
 }
 
-
 public extension Binding where Value == Bool? {
     func orEmpty() -> Binding<Bool> {
         Binding<Bool>(

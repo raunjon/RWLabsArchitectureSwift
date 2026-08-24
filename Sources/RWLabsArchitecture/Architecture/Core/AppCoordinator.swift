@@ -171,6 +171,10 @@ public final class AppCoordinator: ObservableObject {
     /// let flowCoordinator = AppCoordinator.shared.flowCoordinator
     /// ```
     public static let shared = AppCoordinator()
+    
+    /// Determines the initial flow based on user authentication status
+    /// - Returns: `MainAppFlow` if authenticated, `OnboardingFlow` if not
+    public var initialFlow: (any Flow)?
 
     // MARK: - Published State
 
@@ -200,7 +204,7 @@ public final class AppCoordinator: ObservableObject {
     ///     flowCoordinator.setRootFlow(mainFlow)
     /// }
     /// ```
-    public private(set) var flowCoordinator: FlowCoordinator?
+    public let flowCoordinator: FlowCoordinator = .init()
 
     // MARK: - Configuration Closures
 
@@ -293,7 +297,7 @@ public final class AppCoordinator: ObservableObject {
         setupDependencies()
 
         // 3. Initialize navigation system
-        setupNavigation()
+//        setupNavigation()
 
         // 4. Start registered services
         startServices()
@@ -346,6 +350,10 @@ public final class AppCoordinator: ObservableObject {
         // Example: container.registerSingleton(NetworkService.self, instance: DefaultNetworkService())
     }
 
+    public func configureFlow() {
+        self.setupNavigation()
+    }
+    
     /// Initializes navigation system
     ///
     /// Creates the FlowCoordinator and optionally sets up the initial flow
@@ -355,11 +363,8 @@ public final class AppCoordinator: ObservableObject {
     /// through the FlowContext system.
     private func setupNavigation() {
         // Create flow coordinator (each flow will have its own navigator via FlowContext)
-        let flowCoord = FlowCoordinator()
-        self.flowCoordinator = flowCoord
-
         // Call optional initial flow setup
-        onSetupInitialFlow?(flowCoord)
+        onSetupInitialFlow?(flowCoordinator)
     }
 
     /// Starts all registered services

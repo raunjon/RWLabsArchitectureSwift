@@ -810,31 +810,21 @@ public struct
 StoredObject<Value:Codable> {
 
     private let key: String
-    private var data: Data?
     
-    public init(_ key: String = #function) {
+    public init(_ key: String) {
         self.key = key
-        data = UserDefaults.app.object(forKey: key) as? Data
     }
 
     public var wrappedValue: Value? {
         get {
-            guard let data else { return nil }
-            return try? JSONDecoder().decode(Value.self, from: data)
-        }
-        set { data = try? JSONEncoder().encode(newValue) }
-    }
-    
-    var value: Value?  {
-        get {
-            guard let data = data else { return nil }
+            guard let data = UserDefaults.app.object(forKey: key) as? Data else { return nil }
             return try? JSONDecoder().decode(Value.self, from: data)
         }
         set {
-            data = try? JSONEncoder().encode(newValue)
+            let data = try? JSONEncoder().encode(newValue)
+            UserDefaults.app.setValue(data, forKey: key)
         }
     }
-
 }
 
 @propertyWrapper

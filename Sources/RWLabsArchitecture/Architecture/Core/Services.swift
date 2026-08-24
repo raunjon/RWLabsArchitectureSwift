@@ -303,7 +303,7 @@ public protocol ValidationService {
     ///   - value: The string to validate
     ///   - rules: Array of validation rules to apply
     /// - Returns: ValidationResult with validity status and errors
-    func validate(_ value: String, rules: [ValidationRule]) -> ValidationResult
+    func validate(_ value: String?, rules: [ValidationRule]) -> ValidationResult
 }
 
 /// Predefined and custom validation rules
@@ -314,6 +314,7 @@ public protocol ValidationService {
 /// - `.maxLength(Int)` - Maximum character length
 /// - `.email` - Valid email format
 /// - `.phone` - Valid phone number (10-15 digits)
+/// - `.minAge(Int)` - Minimum age requirement (Date string in ISO 8601 format: YYYY-MM-DD)
 /// - `.custom((String) -> Bool, errorMessage: String)` - Custom validation logic
 public enum ValidationRule {
     /// Value must not be empty (after trimming whitespace)
@@ -330,6 +331,9 @@ public enum ValidationRule {
 
     /// Valid phone number (10-15 digits)
     case phone
+
+    /// Minimum age requirement (Date string in ISO 8601 format: YYYY-MM-DD)
+    case minAge(Int,String)
 
     /// Custom validation with predicate and error message
     case custom((String) -> Bool, errorMessage: String)
@@ -379,7 +383,8 @@ public struct ValidationResult: Sendable {
 public final class DefaultValidationService: ValidationService {
     public init() {}
 
-    public func validate(_ value: String, rules: [ValidationRule]) -> ValidationResult {
+    public func validate(_ value: String?, rules: [ValidationRule]) -> ValidationResult {
+        let value = value ?? ""
         var errors: [String] = []
 
         for rule in rules {
@@ -411,6 +416,20 @@ public final class DefaultValidationService: ValidationService {
                 let phonePredicate = NSPredicate(format: "SELF MATCHES %@", phoneRegex)
                 if !phonePredicate.evaluate(with: value) {
                     errors.append("Invalid phone number")
+                }
+
+            case .minAge(let minimumAge, let dateFormat):
+                let formatter = DateFormatter()
+                formatter.dateFormat = dateFormat
+                if let birthDate = formatter.date(from: value) {
+                    let calendar = Calendar.current
+                    let now = Date()
+                    let ageComponents = calendar.dateComponents([.year], from: birthDate, to: now)
+                    if let age = ageComponents.year, age < minimumAge {
+                        errors.append("You must be at least \(minimumAge) years old")
+                    }
+                } else {
+                    errors.append("Invalid date format.")
                 }
 
             case .custom(let validator, let errorMessage):

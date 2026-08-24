@@ -47,7 +47,7 @@ extension TabBarFlow {
 /// Protocol for individual tab flows within a tab bar
 ///
 /// Each tab in a tab bar is represented by a flow conforming to this protocol.
-public protocol BaseTabFlow: NavigationFlow {
+public protocol TabFlow: Flow {
     /// The type representing tab items
     associatedtype Tabitem = Int
 
@@ -55,7 +55,7 @@ public protocol BaseTabFlow: NavigationFlow {
     var tab: Tabitem { get }
 }
 
-extension BaseTabFlow {
+extension TabFlow {
     /// Tab flows use exclusive activation by default
     public var activationMode: FlowActivationMode {
         .exclusive
@@ -67,6 +67,8 @@ extension BaseTabFlow {
 /// Navigation flows have their own navigation coordinator for managing
 /// the navigation stack within that flow.
 public protocol NavigationFlow: Flow {
+    associatedtype FlowView: RoutableView
+    var flowView: FlowView { get set }
 }
 
 // MARK: - Flow Activation Mode
@@ -103,7 +105,7 @@ public protocol Flow: Identifiable, ObservableObject where ID == String {
 
     /// Unique identifier for the flow
     var id: String { get }
-
+    
     /// Child flows that can be entered from this flow
     var subflows: [any Flow] { get }
 
@@ -313,7 +315,7 @@ public class AnyFlow<F: Flow>: Flow, Equatable {
         self._canEnter = { flow.canEnter() }
         self._onExit = { flow.onExit() }
     }
-
+    
     public var subflows: [any Flow] {
         _subflows()
     }

@@ -126,7 +126,15 @@ public final class FlowCoordinator: ObservableObject {
         // Emit command for platform handling
         commandSubject.send(.setRootFlow(flow, animated: animated))
 
+        AppCoordinator.shared.initialFlow = flow
         print("✅ Set root flow: \(flow.id)")
+    }
+    
+    public func updateRootFlowIfRequired<F: Flow>(_ flow: F, animated: Bool = true) {
+        guard flowContextRegistry[flow.id] == nil else {
+            return
+        }
+        self.setRootFlow(flow, animated: animated)
     }
 
     /// Replaces the current flow with a new flow
