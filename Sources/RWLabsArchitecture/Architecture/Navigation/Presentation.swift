@@ -21,7 +21,8 @@ public extension View {
         _ connection: CaseConnection<From, To, Case>,
         @ViewBuilder content: @escaping (To) -> Content
     ) -> some View {
-        sheet(item: connection.bindingModel, content: content)
+        connection.presentationStyle = .modal
+        return sheet(item: connection.bindingModel, content: content)
     }
 
     /// `present(_:content:)` for a binding to the connection, e.g. `$model.connections.editor`
@@ -45,7 +46,8 @@ public extension View {
         enableBackButton: Bool = true,
         @ViewBuilder _ destination: @escaping (To) -> Destination
     ) -> some View {
-        navigationDestination(item: connection.bindingModel) {
+        connection.presentationStyle = .push
+        return navigationDestination(item: connection.bindingModel) {
             destination($0).customBackButton(enable: enableBackButton)
         }
     }

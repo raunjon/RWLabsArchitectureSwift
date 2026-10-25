@@ -47,6 +47,19 @@ override func send(_ action: Action) {
 
 `model.destination` is a plain pass-through to `state.destination`, so the two are interchangeable, and changes are synchronous.
 
+### Going back: `close()` and `popToRoot()`
+
+A child can leave without sending its parent an output:
+
+```swift
+case .cancelTapped: close()        // pop, dismiss or remove just this screen
+case .doneTapped:   popToRoot()    // back to the root of this NavigationStack
+```
+
+- **`close()`** clears the parent's value that holds this model (its `destination` case, or its optional state), but only if the parent still holds it. It works for pushes, sheets, alerts and optional inline children. For a directly connected child (a tab) or a root, it logs a warning and does nothing.
+- **`popToRoot()`** walks up through the screens that were pushed and clears `destination` on the screen at the bottom of the stack; SwiftUI pops every pushed screen in one animation. Inside a sheet it stops at the sheet's root, so the sheet stays open. Called on a stack root, it pops what that root pushed.
+- **How a push is recognised:** the view shows the connection with `.push(connection)`, or the destination's `presentationStyle` is `.push` (`showDestination`). A child shown some other way (a hand-written `.navigationDestination(item: connection.bindingModel)`) counts as not pushed, so `popToRoot()` stops there.
+
 ## 3. Presenting from the View
 
 Bind each destination's connection to a presentation. The helpers work on any view, so chain them after other modifiers:
@@ -157,4 +170,4 @@ func testTappingAProductPushesDetail() {
 }
 ```
 
-Popping to the root of a stack from a deep screen isn't built yet; the design is in [Backlog.md](Backlog.md).
+`close()` and `popToRoot()` work without views when the destination enum declares `presentationStyle`; `StackNavigationTests` shows chains of pushes and sheets.

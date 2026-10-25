@@ -38,6 +38,11 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
     /// Subscriptions kept alive for the model's lifetime
     public var cancellables = Set<AnyCancellable>()
 
+    /// Set by the case connection that created this model; used by `popToRoot()` and `close()`
+    var parentLink: ParentLink?
+    /// The links of the children this model's case connections currently hold
+    var childLinks: [ParentLink] = []
+
     /// Current navigation destination; the same as reading or writing `state.destination`
     public var destination: Destination? {
         get { state.destination }

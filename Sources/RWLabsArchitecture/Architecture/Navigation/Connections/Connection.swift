@@ -219,7 +219,14 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case>: @MainAc
     private let writePayload: (inout From.State, To.State) -> Bool
     /// Sets the parent's value to `nil`; `false` (and no change) if it doesn't hold this child's state
     private let clearPayload: (inout From.State) -> Bool
+    /// The style a destination enum's case declares (`RouteDestinationPresentable`), if any
+    private let readStyle: (From.State) -> PresentationStyle?
     private weak var parentViewModel: (any ViewModel)?
+    /// The active child's link to the parent, for `popToRoot()` / `close()`
+    private var link: ParentLink?
+
+    /// How the view shows the child; set by `.push(_:)` and `.present(_:)`
+    var presentationStyle: PresentationStyle?
     private var stateCancellable: AnyCancellable?
     private var childStateCancellable: AnyCancellable?
     private var isActive = false
@@ -257,6 +264,9 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case>: @MainAc
             state[keyPath: stateKeyPath] = nil
             return true
         }
+        readStyle = { state in
+            (state[keyPath: stateKeyPath] as? any RouteDestinationPresentable)?.presentationStyle
+        }
         connection.onClear = { [weak self] in self?.clearParentDestination() }
         if let parent {
             _setupParent(parent)
@@ -281,6 +291,7 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case>: @MainAc
             state[keyPath: keyPath] = nil
             return true
         }
+        readStyle = { _ in nil }
         connection.onClear = { [weak self] in self?.clearParentDestination() }
         if let parent {
             _setupParent(parent)
@@ -378,6 +389,7 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case>: @MainAc
         isActive = true
         let child = connection.createOrGetViewModel(with: childState)
         child.state = childState
+        attachLink(to: child)
         childStateCancellable = child.objectWillChange
             .sink { [weak self] _ in
                 // Ignore the echo of our own parent → child push
@@ -391,7 +403,43 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case>: @MainAc
     private func deactivate() {
         isActive = false
         childStateCancellable?.cancel()
+        detachLink()
         connection.clear()
+    }
+
+    // MARK: Parent Link
+
+    /// Gives the child a link back to the parent, and registers it with the parent
+    private func attachLink(to child: To) {
+        guard let navigableChild = child as? any NavigableModel else { return }
+        let parent = parentViewModel as? any NavigableModel
+        let link = ParentLink(
+            parent: parent,
+            style: { [weak self] in self?.currentStyle },
+            clear: { [weak self] in self?.clearParentDestination() }
+        )
+        navigableChild.parentLink = link
+        parent?.childLinks.append(link)
+        self.link = link
+    }
+
+    private func detachLink() {
+        guard let link else { return }
+        link.parent?.childLinks.removeAll { $0 === link }
+        if let navigableChild = connection.model as? any NavigableModel, navigableChild.parentLink === link {
+            navigableChild.parentLink = nil
+        }
+        self.link = nil
+    }
+
+    /// From `.push`/`.present`, else the destination case's `presentationStyle`, else the
+    /// child's own (a `RouteDestinationPresentable` child shown with `showDestination`)
+    private var currentStyle: PresentationStyle? {
+        if let presentationStyle { return presentationStyle }
+        if let parentState = parentViewModel?.state as? From.State, let style = readStyle(parentState) {
+            return style
+        }
+        return (connection.model as? any RouteDestinationPresentable)?.presentationStyle
     }
 
     // MARK: Syncing
