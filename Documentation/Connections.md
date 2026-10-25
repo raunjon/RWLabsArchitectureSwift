@@ -151,7 +151,7 @@ When a screen's parent ViewModel goes away, its children and connections go too.
 |---|---|
 | A case connection's `model` stays `nil` after setting the destination | Pass `parent: parent` to `connect(state:case:parent:)`, or touch the connection in `setupConnections()`. Then check that the `case:` key path matches the case you set. |
 | A connection logs "expected a parent of type …" | The connection's `From` type doesn't match the `Connections` class's parent. |
-| A deep link stops at a screen | Its model adopts `HasConnections`, its `Destination` handles the URL name, and the connection is touched in `setupConnections()`. |
+| A deep link stops at a screen | The `Log.w` warning names the step and what's missing: `@DeepLinkable` (or `init?(_ step:)`), a case for the name, `HasConnections`, or touching the connection in `setupConnections()`. `@Component` covers the last two. |
 
 ## Testing
 

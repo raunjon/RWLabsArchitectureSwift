@@ -210,7 +210,7 @@ https://example.com/home/item?id=42  (universal links give the same path)
 1. a model that adopts `DeepLinkStepHandler` handles the step itself (tab bars);
 2. otherwise its `Destination`, if `DeepLinkable`, builds a case from the step, `state.destination` is set, and the link continues into the child that destination's connection creates.
 
-It returns `false`, and logs a warning, at the first segment no screen recognises. Everything before that segment stays open.
+It returns `false` at the first segment it can't open, and logs a warning that says why: the screen's `Destination` isn't `@DeepLinkable`, has no case with that name, a query item is missing, the model doesn't adopt `HasConnections` (`@Component` adds it), or its connection isn't touched in `setupConnections()`. Everything before that segment stays open.
 
 ### Per screen: `@DeepLinkable` on its destination enum
 

@@ -180,11 +180,13 @@ public extension ViewModel {
 
         var current: any ViewModel = self
         for step in steps {
-            guard let next = DeepLinkWalker.open(step, on: current) else {
-                Log.w("Deep link \(route.path): '\(step.name)' isn't handled by \(type(of: current)). Is it in its Destination's init?(_ step:), and is the connection referenced in setupConnections()?")
+            switch DeepLinkWalker.open(step, on: current) {
+            case .opened(let next):
+                current = next
+            case .stopped(let reason):
+                Log.w("Deep link \(route.path): stopped at '\(step.name)'. \(reason)")
                 return false
             }
-            current = next
         }
         return true
     }
@@ -197,29 +199,46 @@ protocol DeepLinkChildProviding {
     func deepLinkChild() -> (any ViewModel)?
 }
 
+/// One step of a deep link: the child it opened, or why it stopped
+enum DeepLinkOutcome {
+    case opened(any ViewModel)
+    /// A sentence saying what's missing, for the warning
+    case stopped(String)
+}
+
 @MainActor
 enum DeepLinkWalker {
-    static func open(_ step: DeepLinkStep, on model: any ViewModel) -> (any ViewModel)? {
+    static func open(_ step: DeepLinkStep, on model: any ViewModel) -> DeepLinkOutcome {
         if let handler = model as? DeepLinkStepHandler {
-            return handler.openDeepLinkStep(step)
+            guard let child = handler.openDeepLinkStep(step) else {
+                return .stopped("\(type(of: model)).openDeepLinkStep(_:) returned nil for it.")
+            }
+            return .opened(child)
         }
         return openDestination(step, on: model)
     }
 
-    private static func openDestination<M: ViewModel>(_ step: DeepLinkStep, on model: M) -> (any ViewModel)? {
-        guard let linkable = M.State.Destination.self as? DeepLinkable.Type,
-              let destination = linkable.init(step) as? M.State.Destination else {
-            return nil
+    private static func openDestination<M: ViewModel>(_ step: DeepLinkStep, on model: M) -> DeepLinkOutcome {
+        let destinationName = "\(M.self).Destination"
+        guard let linkable = M.State.Destination.self as? DeepLinkable.Type else {
+            return .stopped("\(destinationName) isn't DeepLinkable; add @DeepLinkable to it, or write init?(_ step:).")
+        }
+        guard let destination = linkable.init(step) as? M.State.Destination else {
+            return .stopped("\(destinationName) has no case for it, or a required query item is missing or doesn't convert.")
         }
         model.state.destination = destination
-        return activeChild(of: model)
+        guard let owner = model as? any HasConnections else {
+            return .stopped("The destination is set, but \(M.self) doesn't adopt HasConnections, so the link can't reach the child. Add @Component, or adopt HasConnections.")
+        }
+        guard let child = activeChild(of: owner) else {
+            return .stopped("The destination is set, but no case connection in \(M.self).Connections created its child. Check the connection's case: key path, and that it's referenced in setupConnections() (@Component does this).")
+        }
+        return .opened(child)
     }
 
     /// The child created by the model's active case connection
-    private static func activeChild(of model: any ViewModel) -> (any ViewModel)? {
-        guard let owner = model as? any HasConnections else { return nil }
-        let connections = owner.connections
-        for child in Mirror(reflecting: connections).children {
+    private static func activeChild(of owner: any HasConnections) -> (any ViewModel)? {
+        for child in Mirror(reflecting: owner.connections).children {
             if let connection = child.value as? DeepLinkChildProviding,
                let childModel = connection.deepLinkChild() {
                 return childModel

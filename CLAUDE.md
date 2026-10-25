@@ -123,7 +123,7 @@ Ready-made service protocols and implementations. Apps register the ones they us
   - Or write `init?(_ step: DeepLinkStep)` by hand, mapping URL names (`step.name`) and parameters (`step["id"]`, shared query items) to cases. Its model adopts `HasConnections` (in `ViewModelConnections.swift`, now `@MainActor` with `ConnectionsType: AnyObject`) so the walker can reach the child.
   - Models that don't navigate through `destination` (tab bars) adopt `DeepLinkStepHandler.openDeepLinkStep(_:) -> (any ViewModel)?`.
   - The walker sets `state.destination`, then finds the active `CaseConnection` by reflecting over `connections` and calls its internal `deepLinkChild()`, which syncs immediately rather than on the next main-queue turn. Lazy connections must be touched in `setupConnections()` to be found.
-  - It stops at the first unrecognised segment and logs a warning with `Log.w`. The root ViewModel decides whether a link can open now, or stores it (e.g. `pendingLink`) until after login. See `Documentation/Flows.md`.
+  - It stops at the first step it can't open and logs a `Log.w` warning naming the step and the reason: a `DeepLinkStepHandler` returned `nil`, the `Destination` isn't `DeepLinkable`, it has no case for the name (or a query item is missing), the model doesn't adopt `HasConnections`, or no case connection it can see created the child. `DeepLinkWalker.open` returns a `DeepLinkOutcome` (`.opened(child)` / `.stopped(reason)`); `DeepLinkWarningTests` covers each reason. The root ViewModel decides whether a link can open now, or stores it (e.g. `pendingLink`) until after login. See `Documentation/Flows.md`.
 
 ### Navigation/Connections/
 
@@ -258,6 +258,5 @@ Three guides in `Documentation/`. Keep them in sync with the code and the gotcha
 - [Connections.md](Documentation/Connections.md) — direct, case and optional connections, `setupConnections()`, how syncing works, memory, troubleshooting
 - [Navigation.md](Documentation/Navigation.md) — destinations, `push` / `present` / `showDestination` / custom alerts, view protocols, testing
 - [Flows.md](Documentation/Flows.md) — root flows, tab bars, deep links (`openDeepLink`, `@DeepLinkable`, `Route`), app startup
-- [Backlog.md](Documentation/Backlog.md) — deferred items not built yet
 
 Doc comments in the source are short and current. When one disagrees with the code, trust the code and fix the comment.
