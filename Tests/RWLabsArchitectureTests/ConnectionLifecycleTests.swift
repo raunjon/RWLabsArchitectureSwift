@@ -7,7 +7,7 @@ private final class StubErrorService: ErrorService {
     func handleError(_ error: Error) {}
 }
 
-final class LifecycleChild: ComponentModel<LifecycleChild.State, LifecycleChild.Action, LifecycleChild.Output> {
+final class LifecycleChild: ComponentModel<LifecycleChild> {
     struct State: ViewModelState {
         var name = ""
         var isLoading = false
@@ -25,7 +25,9 @@ final class LifecycleChild: ComponentModel<LifecycleChild.State, LifecycleChild.
     }
 }
 
-final class LifecycleParent: ComponentModel<LifecycleParent.State, EmptyAction, EmptyOutput> {
+final class LifecycleParent: ComponentModel<LifecycleParent> {
+    typealias Action = EmptyAction
+    typealias Output = EmptyOutput
     struct State: ViewModelState {
         var tab = LifecycleChild.State()
         var unrelated = 0
@@ -151,3 +153,6 @@ final class ConnectionLifecycleTests: XCTestCase {
         XCTAssertNil(weakChild, "case child leaked")
     }
 }
+
+extension LifecycleChild: ComponentTypes {}
+extension LifecycleParent: ComponentTypes {}

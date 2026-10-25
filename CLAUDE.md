@@ -18,15 +18,16 @@ Dependencies: `swift-case-paths` (tracking `main`), used for `@CasePathable` des
 
 ## Default building blocks
 
-**New feature code uses `ComponentModel` and `ComponentView`.** Write every screen as a `ComponentModel<State, Action, Output>` subclass plus a `ComponentView`, and write all examples and docs that way too. Treat `BaseViewModel` and `BaseView` as the underlying base types, not things to use directly.
+**New feature code uses `ComponentModel` and `ComponentView`.** Write every screen as a `@Component final class X: ComponentModel<X>` subclass plus a `ComponentView`, and write all examples and docs that way too. Treat `BaseViewModel` and `BaseView` as the underlying base types, not things to use directly.
 
-- `ComponentModel` is currently an empty subclass of `BaseViewModel`, so everything listed for `BaseViewModel` below applies to it.
+- `ComponentModel<Model: ComponentTypes>` (`Base/ComponentModel.swift`) subclasses `BaseViewModel<Model.State, Model.Action, Model.Output>`: it takes **the model itself** and reads its nested types through `ComponentTypes`. Otherwise it's empty, so everything listed for `BaseViewModel` below applies to it. Without `@Component`, a model writes `extension X: ComponentTypes {}` itself, plus `typealias Output = EmptyOutput` (and so on) for any type it doesn't declare.
 - Mark every `ComponentModel` subclass **`@Component`** (`Base/Component.swift`) and leave out the boilerplate it writes:
   - `struct State` gets `@ComponentState`, which adds `isLoading`, `error` and `destination: Destination?` (whichever are missing) plus `ViewModelState`.
   - `enum Destination` gets `@CasePathable` and `ViewModelDestination`; `enum Action` and `enum Output` get their conformances.
   - A missing `Destination` / `Action` / `Output` becomes a `typealias` to `EmptyDestination` / `EmptyAction` / `EmptyOutput`. The class header may still name it (`X.Output`).
-  - A nested `class Connections` gets `setupConnections()` touching every `lazy var` (`@ComponentConnections`), and the model gets `lazy var connections = Connections(parent: self)` and `HasConnections`.
-  - Anything declared by hand wins. A macro can't add a superclass, so the `ComponentModel<X.State, X.Action, X.Output>` header stays.
+  - A nested `class Connections: ConnectionsBase` (a generated `typealias ConnectionsBase = ViewModelConnections<Model>`; a macro can't write the superclass itself) gets `setupConnections()` touching every `lazy var` (`@ComponentConnections`), and the model gets `lazy var connections = Connections(parent: self)` and `HasConnections`.
+  - The class gets `ComponentTypes`, which `ComponentModel<X>` needs.
+  - Anything declared by hand wins. A macro can't write a superclass, which is why the header names the model and `Connections` inherits from the generated `ConnectionsBase`.
   - The module `@_exported import`s `CasePaths`, so `@CasePathable` resolves without the app importing it.
 - A `ComponentView` declares its model as `@ObservedObject var model` when a parent or connection owns it (the usual case for child screens), or `@StateObject var model` when the view owns it. `BaseView` only requires `var model: Model { get }`, so either works, and so does a plain `let`.
 - `ComponentView` doesn't add a `NavigationStack`. The view that **hosts** a navigation root wraps it: the tab bar does `NavigationStack { HomeView(model: …) }`, and the root flow switch does the same for a flow that pushes. Don't make one view conform to both `ComponentView` and `RoutableView`. It compiles, but both provide a default `body`, so which one you get isn't obvious.
@@ -66,7 +67,7 @@ Everything lives under `Sources/RWLabsArchitecture/Architecture/`.
   - `binding(\.keyPath)` builds a SwiftUI `Binding` into `state`. It skips writes when the new value is `Equatable` and unchanged.
   - `destination` (get/set) is a plain pass-through to `state.destination`, so the two are interchangeable. `dismiss()` sets it to `nil`.
   - `updateState { }` comes from the `StateComponent` default in `ViewModelProtocol.swift`.
-  - Also defines `EmptyState` (a struct) and `EmptyDestination` / `EmptyAction` / `EmptyOutput` (enums with no cases, so a model using them can't navigate, receive an action or emit), `ViewModelState.hasError` / `clearError()`, and `open class ComponentModel<S, A, O>: BaseViewModel<S, A, O>`, **the class feature ViewModels subclass**. It's currently empty, so it's the place for anything every feature ViewModel should share.
+  - Also defines `EmptyState` (a struct) and `EmptyDestination` / `EmptyAction` / `EmptyOutput` (enums with no cases, so a model using them can't navigate, receive an action or emit), `ViewModelState.hasError` / `clearError()`. `ComponentModel` lives in `ComponentModel.swift` (see above); it's the place for anything every feature ViewModel should share.
 - **`ErrorService`** (protocol, in `Core/Service.swift`) — `func handleError(_ error: Error)`. `BaseViewModel` declares `@Injected var errorService: ErrorService`, which resolves eagerly. **By design, every host app must provide its own `ErrorService`** and register it in `DependencyContainer.shared` before creating any ViewModel; `AppCoordinator` intentionally doesn't register a default. `AppCoordinator.configure()` stops with a clear message if it's missing; otherwise a ViewModel's init would crash. Tests need to register one too.
 - **`BaseView`** (`BaseView.swift`) — a `View` with `associatedtype Model: ViewModel`, `var model: Model { get }`, and `@ViewBuilder var content`. The default `body` is `content.onAppear { model.onAppear() }`. If the view also conforms to `Tappable`, `body` adds a full-rect `contentShape` and `.onTapGesture { onTap() }`.
 - **`CustomAlert.swift`** — `customAlert(isPresented:dismissOnBackgroundTap:content:)` and `customAlert(item:dismissOnBackgroundTap:destination:)`. The alert is hosted in its own `UIWindow` above the app (made key, VoiceOver-modal), over a dimmed background, and animates in and out the same way whether it's dismissed by a background tap or by clearing the binding in code. Things to know:
@@ -175,7 +176,7 @@ Ready-made service protocols and implementations. Apps register the ones they us
 
 ```swift
 @Component
-final class ProfileViewModel: ComponentModel<ProfileViewModel.State, ProfileViewModel.Action, ProfileViewModel.Output> {
+final class ProfileViewModel: ComponentModel<ProfileViewModel> {
     struct State {}                          // isLoading, error, destination are generated
 
     enum Destination: RouteDestinationPresentable {
@@ -185,7 +186,7 @@ final class ProfileViewModel: ComponentModel<ProfileViewModel.State, ProfileView
 
     enum Action { case editBio }             // no Output: it becomes EmptyOutput
 
-    final class Connections: ViewModelConnections<ProfileViewModel> {
+    final class Connections: ConnectionsBase {
         lazy var bioEditor = Connection<BioEditorViewModel> { [weak parent] output in
             parent?.handle(output)
         }

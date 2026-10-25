@@ -69,7 +69,7 @@ public protocol Connectable: AnyObject {
 
 /// A ViewModel that exposes its connections, so deep links can continue into its children.
 ///
-/// Adopt it on models that have destinations: `final class HomeModel: ComponentModel<…>, HasConnections`.
+/// `@Component` adopts it for models with a nested `Connections` class; otherwise write `final class HomeModel: ComponentModel<HomeModel>, HasConnections`.
 @MainActor
 public protocol HasConnections: AnyObject {
     /// The type of connections this ViewModel uses (usually a `ViewModelConnections` subclass)

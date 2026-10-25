@@ -58,7 +58,9 @@ enum MacroDestination: ViewModelDestination {
 
 // MARK: - A screen that uses it
 
-final class MacroScreenModel: ComponentModel<MacroScreenModel.State, EmptyAction, EmptyOutput>, HasConnections {
+final class MacroScreenModel: ComponentModel<MacroScreenModel>, HasConnections {
+    typealias Action = EmptyAction
+    typealias Output = EmptyOutput
     struct State: ViewModelState {
         var isLoading = false
         var error: Error?
@@ -81,7 +83,10 @@ final class MacroScreenModel: ComponentModel<MacroScreenModel.State, EmptyAction
     override func send(_ action: EmptyAction) {}
 }
 
-final class MacroItemModel: ComponentModel<MacroItemState, EmptyAction, EmptyOutput> {
+final class MacroItemModel: ComponentModel<MacroItemModel> {
+    typealias State = MacroItemState
+    typealias Action = EmptyAction
+    typealias Output = EmptyOutput
     override func send(_ action: EmptyAction) {}
 }
 
@@ -149,3 +154,6 @@ final class DeepLinkMacroTests: XCTestCase {
         XCTAssertEqual(screen.connections.detail.model?.state.itemId, "9")
     }
 }
+
+extension MacroScreenModel: ComponentTypes {}
+extension MacroItemModel: ComponentTypes {}

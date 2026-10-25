@@ -16,17 +16,18 @@
 /// | `enum Destination { … }` | `@CasePathable` and `ViewModelDestination` |
 /// | `enum Action { … }` / `enum Output { … }` | `ViewModelAction` / `ViewModelOutput` |
 /// | no `Destination` / `Action` / `Output` | `typealias Destination = EmptyDestination` (and so on) |
-/// | `class Connections: ViewModelConnections<Self> { … }` | `setupConnections()` touching every `lazy var`, `lazy var connections = Connections(parent: self)`, and `HasConnections` |
+/// | the class | `ComponentTypes`, which `ComponentModel<Self>` reads the three types through |
+/// | `class Connections: ConnectionsBase { … }` | `typealias ConnectionsBase = ViewModelConnections<Self>`, `setupConnections()` touching every `lazy var`, `lazy var connections = Connections(parent: self)`, and `HasConnections` |
 ///
 /// ```swift
 /// @Component
-/// final class ProfileModel: ComponentModel<ProfileModel.State, ProfileModel.Action, ProfileModel.Output> {
+/// final class ProfileModel: ComponentModel<ProfileModel> {
 ///     struct State { var name = "" }
 ///     enum Destination { case editor(EditorModel.State) }
 ///     enum Action { case edit }
 ///     enum Output { case saved }
 ///
-///     final class Connections: ViewModelConnections<ProfileModel> {
+///     final class Connections: ConnectionsBase {
 ///         lazy var editor = Connection<EditorModel> { [weak parent] output in … }
 ///             .connect(state: \.destination, case: \.editor, parent: parent)
 ///     }
@@ -40,14 +41,13 @@
 /// ```
 ///
 /// Anything you declare yourself (a property, a conformance, `setupConnections()`, `connections`)
-/// is left alone. The header can name a generated type (`ProfileModel.Output` with no
-/// `enum Output`). A macro can't add a superclass, so the header itself stays.
+/// is left alone. It also adds `ComponentTypes`, which `ComponentModel<ProfileModel>` needs.
 ///
 /// Inside the model, reach optional state with `state.x` (or `self.x`); a bare `x = …` doesn't
 /// go through dynamic member lookup.
 @attached(memberAttribute)
-@attached(member, names: named(Destination), named(Action), named(Output), named(connections))
-@attached(extension, conformances: HasConnections)
+@attached(member, names: named(Destination), named(Action), named(Output), named(connections), named(ConnectionsBase))
+@attached(extension, conformances: HasConnections, ComponentTypes)
 public macro Component() = #externalMacro(module: "RWLabsArchitectureMacros", type: "ComponentMacro")
 
 /// Adds `isLoading`, `error` and `destination: Destination?` (any that are missing) and

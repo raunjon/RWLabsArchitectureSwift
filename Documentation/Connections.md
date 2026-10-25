@@ -16,7 +16,7 @@ Each ViewModel that has children declares a `Connections` class: one `lazy var` 
 
 ```swift
 @Component
-final class ProfileModel: ComponentModel<ProfileModel.State, ProfileModel.Action, ProfileModel.Output> {
+final class ProfileModel: ComponentModel<ProfileModel> {
     struct State {
         var stats = StatsModel.State()          // a direct child's state
     }                                           // destination: Destination? is generated
@@ -25,7 +25,7 @@ final class ProfileModel: ComponentModel<ProfileModel.State, ProfileModel.Action
         case editor(EditorModel.State)          // case children's states
     }
 
-    final class Connections: ViewModelConnections<ProfileModel> {
+    final class Connections: ConnectionsBase {     // = ViewModelConnections<ProfileModel>
         lazy var stats: StatsModel = Connection<StatsModel>()
             .connect(from: parent!, to: \.stats)
 
@@ -40,9 +40,10 @@ final class ProfileModel: ComponentModel<ProfileModel.State, ProfileModel.Action
 }
 ```
 
-`@Component` writes the `connections` property, `HasConnections`, and a `setupConnections()` that touches every `lazy var`. Without the macro, write those three yourself:
+`@Component` writes `ConnectionsBase`, the `connections` property, `HasConnections`, and a `setupConnections()` that touches every `lazy var`. Without the macro, write those yourself, plus `ComponentTypes`:
 
 ```swift
+extension ProfileModel: ComponentTypes {}             // lets ComponentModel<ProfileModel> find State/Action/Output
 lazy var connections = Connections(parent: self)       // on the model, which adopts HasConnections
 override func setupConnections() { _ = stats; _ = editor }   // in Connections
 ```

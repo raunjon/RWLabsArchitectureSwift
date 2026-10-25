@@ -17,7 +17,8 @@ There are three levels:
 The root ViewModel holds an optional enum with one case per flow. Each case carries that flow's **state**, the same rule as destination enums.
 
 ```swift
-final class AppViewModel: ComponentModel<AppViewModel.State, AppViewModel.Action, EmptyOutput> {
+@Component
+final class AppViewModel: ComponentModel<AppViewModel> {
     @CasePathable
     enum Flow: ViewModelDestination {
         case login(LoginViewModel.State)
@@ -102,7 +103,8 @@ struct AppView: ComponentView {
 Every tab's state is always present, so each tab is an ordinary `Connection.connect(from:to:)` that returns a non-optional ViewModel. Tabs stay alive while the user switches between them, so each one keeps its state and its navigation stack.
 
 ```swift
-final class MainTabViewModel: ComponentModel<MainTabViewModel.State, MainTabViewModel.Action, MainTabViewModel.Output> {
+@Component
+final class MainTabViewModel: ComponentModel<MainTabViewModel> {
     enum Tab: Hashable { case home, profile }
 
     struct State: ViewModelState {
@@ -228,7 +230,8 @@ enum Destination: ViewModelDestination {
     case confirmDelete(ConfirmModel.State)
 }
 
-final class HomeModel: ComponentModel<HomeModel.State, HomeModel.Action, HomeModel.Output>, HasConnections { … }
+@Component   // adds HasConnections and setupConnections()
+final class HomeModel: ComponentModel<HomeModel> { … }
 ```
 
 The macro generates the `DeepLinkable` conformance:
@@ -259,11 +262,11 @@ extension HomeModel.Destination: DeepLinkable {
     }
 }
 
-final class HomeModel: ComponentModel<HomeModel.State, HomeModel.Action, HomeModel.Output>, HasConnections { … }
+@Component   // adds HasConnections and setupConnections()
+final class HomeModel: ComponentModel<HomeModel> { … }
 ```
 
-- **`HasConnections`:** a model with destinations adopts it (one word), so the link can find the child its connection creates.
-- **`setupConnections()`:** keep the override (`_ = detail`). The walker can only see a `lazy` connection once it has been touched.
+- **`HasConnections` and `setupConnections()`:** `@Component` adds both. Without it, adopt `HasConnections` and override `setupConnections()` (`_ = detail`): the link needs `HasConnections` to find the child, and the walker can only see a `lazy` connection once it has been touched.
 - **The URL names** are whatever you write in `init?`, not the Swift case names, so renaming a case doesn't break links.
 - **Query items are shared by every step.** Use distinct names (`orderId`, `itemId`) if two screens on one path need different values.
 

@@ -8,7 +8,9 @@ private final class StubErrorService: ErrorService {
 
 // MARK: - A small app tree: tabs → list → detail → reviews
 
-private final class ReviewsModel: ComponentModel<ReviewsModel.State, EmptyAction, EmptyOutput> {
+private final class ReviewsModel: ComponentModel<ReviewsModel> {
+    typealias Action = EmptyAction
+    typealias Output = EmptyOutput
     struct State: ViewModelState {
         var isLoading = false
         var error: Error?
@@ -17,7 +19,9 @@ private final class ReviewsModel: ComponentModel<ReviewsModel.State, EmptyAction
     override func send(_ action: EmptyAction) {}
 }
 
-private final class DetailModel: ComponentModel<DetailModel.State, EmptyAction, EmptyOutput>, HasConnections {
+private final class DetailModel: ComponentModel<DetailModel>, HasConnections {
+    typealias Action = EmptyAction
+    typealias Output = EmptyOutput
     struct State: ViewModelState {
         var itemId = ""
         var isLoading = false
@@ -46,7 +50,9 @@ extension DetailModel.Destination: DeepLinkable {
     }
 }
 
-private final class ListModel: ComponentModel<ListModel.State, EmptyAction, EmptyOutput>, HasConnections {
+private final class ListModel: ComponentModel<ListModel>, HasConnections {
+    typealias Action = EmptyAction
+    typealias Output = EmptyOutput
     struct State: ViewModelState {
         var isLoading = false
         var error: Error?
@@ -77,7 +83,9 @@ extension ListModel.Destination: DeepLinkable {
     }
 }
 
-private final class TabsModel: ComponentModel<TabsModel.State, EmptyAction, EmptyOutput> {
+private final class TabsModel: ComponentModel<TabsModel> {
+    typealias Action = EmptyAction
+    typealias Output = EmptyOutput
     enum Tab { case list, other }
     struct State: ViewModelState {
         var selectedTab: Tab = .other
@@ -183,3 +191,8 @@ final class DeepLinkTests: XCTestCase {
         XCTAssertEqual(tabs.state.selectedTab, .other)
     }
 }
+
+extension ReviewsModel: ComponentTypes {}
+extension DetailModel: ComponentTypes {}
+extension ListModel: ComponentTypes {}
+extension TabsModel: ComponentTypes {}

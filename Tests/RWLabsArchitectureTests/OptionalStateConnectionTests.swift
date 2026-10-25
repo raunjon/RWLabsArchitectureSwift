@@ -7,7 +7,7 @@ private final class StubErrorService: ErrorService {
     func handleError(_ error: Error) {}
 }
 
-final class OptionalDummyModel: ComponentModel<OptionalDummyModel.State, OptionalDummyModel.Action, OptionalDummyModel.Output> {
+final class OptionalDummyModel: ComponentModel<OptionalDummyModel> {
     struct State: ViewModelState {
         var note = ""
         var isLoading = false
@@ -24,7 +24,8 @@ final class OptionalDummyModel: ComponentModel<OptionalDummyModel.State, Optiona
     }
 }
 
-final class OptionalHostModel: ComponentModel<OptionalHostModel.State, OptionalHostModel.Action, EmptyOutput> {
+final class OptionalHostModel: ComponentModel<OptionalHostModel> {
+    typealias Output = EmptyOutput
     struct State: ViewModelState {
         var isLoading = false
         var error: (any Error)?
@@ -155,3 +156,6 @@ final class OptionalStateConnectionTests: XCTestCase {
         XCTAssertNil(weakChild)
     }
 }
+
+extension OptionalDummyModel: ComponentTypes {}
+extension OptionalHostModel: ComponentTypes {}

@@ -67,13 +67,17 @@ public struct ComponentMacro: MemberAttributeMacro, MemberMacro, ExtensionMacro 
         where !declared.types.contains(name) {
             members.append("\(raw: access)typealias \(raw: name) = \(raw: empty)")
         }
-        if declared.types.contains("Connections"), !declared.properties.contains("connections") {
-            members.append("\(raw: access)lazy var connections = Connections(parent: self)")
+        if declared.types.contains("Connections") {
+            guard let className = declaration.as(ClassDeclSyntax.self)?.name.text else { return members }
+            members.append("\(raw: access)typealias ConnectionsBase = ViewModelConnections<\(raw: className)>")
+            if !declared.properties.contains("connections") {
+                members.append("\(raw: access)lazy var connections = Connections(parent: self)")
+            }
         }
         return members
     }
 
-    // MARK: HasConnections
+    // MARK: HasConnections and ComponentTypes
 
     public static func expansion(
         of node: AttributeSyntax,
@@ -82,8 +86,11 @@ public struct ComponentMacro: MemberAttributeMacro, MemberMacro, ExtensionMacro 
         conformingTo protocols: [TypeSyntax],
         in context: some MacroExpansionContext
     ) throws -> [ExtensionDeclSyntax] {
-        guard !protocols.isEmpty, memberNames(of: declaration).types.contains("Connections") else { return [] }
-        return [try ExtensionDeclSyntax("extension \(type.trimmed): HasConnections {}")]
+        let hasConnections = memberNames(of: declaration).types.contains("Connections")
+        return try protocols
+            .map(\.trimmedDescription)
+            .filter { $0 != "HasConnections" || hasConnections }
+            .map { try ExtensionDeclSyntax("extension \(type.trimmed): \(raw: $0) {}") }
     }
 
     // MARK: Helpers

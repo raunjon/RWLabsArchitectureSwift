@@ -9,16 +9,34 @@ import Foundation
 
 // MARK: - ComponentModel
 
-/// The class feature ViewModels subclass.
+/// The class feature ViewModels subclass, taking the model itself as its type parameter:
 ///
-/// Currently identical to `BaseViewModel`; app-wide additions for feature
-/// models belong here.
-open class ComponentModel<State: ViewModelState, Action: ViewModelAction, Output: ViewModelOutput>: BaseViewModel<State, Action, Output> {
+/// ```swift
+/// @Component
+/// final class ProfileModel: ComponentModel<ProfileModel> { … }
+/// ```
+///
+/// The model's nested `State`, `Action` and `Output` become the `BaseViewModel` types, through
+/// `ComponentTypes`. `@Component` adds that conformance; without the macro, write
+/// `extension ProfileModel: ComponentTypes {}` (and `typealias Output = EmptyOutput` and so on
+/// for any it doesn't declare).
+///
+/// Currently identical to `BaseViewModel` otherwise; app-wide additions for feature models
+/// belong here.
+open class ComponentModel<Model: ComponentTypes>: BaseViewModel<Model.State, Model.Action, Model.Output> {
+}
+
+/// Names a model's `State`, `Action` and `Output`, so `ComponentModel` can take the model itself
+/// as its only type parameter. `@Component` adds the conformance.
+public protocol ComponentTypes {
+    associatedtype State: ViewModelState
+    associatedtype Action: ViewModelAction
+    associatedtype Output: ViewModelOutput
 }
 
 import CasePaths
 
-fileprivate class TestViewModel: ComponentModel<TestViewModel.State, TestViewModel.Action, TestViewModel.Output> {
+fileprivate class TestViewModel: ComponentModel<TestViewModel> {
     struct State: ViewModelState {
         var isLoading: Bool
         
@@ -51,7 +69,7 @@ fileprivate class TestViewModel: ComponentModel<TestViewModel.State, TestViewMod
     }
 }
 
-fileprivate class TestDetailViewModel: ComponentModel<TestDetailViewModel.State, TestDetailViewModel.Action, TestDetailViewModel.Output> {
+fileprivate class TestDetailViewModel: ComponentModel<TestDetailViewModel> {
     struct State: ViewModelState {
         var isLoading: Bool
         
@@ -72,3 +90,6 @@ fileprivate class TestDetailViewModel: ComponentModel<TestDetailViewModel.State,
         case dummyOutput
     }
 }
+
+extension TestViewModel: ComponentTypes {}
+extension TestDetailViewModel: ComponentTypes {}

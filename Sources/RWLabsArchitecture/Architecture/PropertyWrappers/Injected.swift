@@ -12,7 +12,7 @@ import Foundation
 /// A dependency resolved from `DependencyContainer.shared` when the owner is created.
 ///
 /// ```swift
-/// final class ProfileModel: ComponentModel<…> {
+/// final class ProfileModel: ComponentModel<ProfileModel> {
 ///     @Injected var api: APIClient
 /// }
 /// ```

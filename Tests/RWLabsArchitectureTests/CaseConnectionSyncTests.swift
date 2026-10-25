@@ -7,7 +7,8 @@ private final class StubErrorService: ErrorService {
     func handleError(_ error: Error) {}
 }
 
-private final class Child: ComponentModel<Child.State, Child.Action, EmptyOutput> {
+private final class Child: ComponentModel<Child> {
+    typealias Output = EmptyOutput
     struct State: ViewModelState {
         var name = ""
         var isLoading = false
@@ -22,7 +23,8 @@ private final class Child: ComponentModel<Child.State, Child.Action, EmptyOutput
     }
 }
 
-private final class Parent: ComponentModel<Parent.State, Parent.Action, EmptyOutput> {
+private final class Parent: ComponentModel<Parent> {
+    typealias Output = EmptyOutput
     @CasePathable
     enum Destination: ViewModelDestination {
         case child(Child.State)
@@ -114,3 +116,6 @@ final class CaseConnectionSyncTests: XCTestCase {
         XCTAssertNil(parent.connections.child.model)
     }
 }
+
+extension Child: ComponentTypes {}
+extension Parent: ComponentTypes {}

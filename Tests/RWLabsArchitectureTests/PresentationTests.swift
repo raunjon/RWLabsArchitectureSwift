@@ -7,7 +7,9 @@ private final class StubErrorService: ErrorService {
     func handleError(_ error: Error) {}
 }
 
-final class SheetChildModel: ComponentModel<SheetChildModel.State, EmptyAction, EmptyOutput> {
+final class SheetChildModel: ComponentModel<SheetChildModel> {
+    typealias Action = EmptyAction
+    typealias Output = EmptyOutput
     struct State: ViewModelState {
         var isLoading = false
         var error: Error?
@@ -16,7 +18,8 @@ final class SheetChildModel: ComponentModel<SheetChildModel.State, EmptyAction, 
     override func send(_ action: EmptyAction) {}
 }
 
-final class PresentingModel: ComponentModel<PresentingModel.State, PresentingModel.Action, EmptyOutput> {
+final class PresentingModel: ComponentModel<PresentingModel> {
+    typealias Output = EmptyOutput
     struct State: ViewModelState {
         var choice: String?
         var isLoading = false
@@ -86,3 +89,6 @@ final class PresentationTests: XCTestCase {
         _ = PresentingView(model: PresentingModel(initialState: .init())).body
     }
 }
+
+extension SheetChildModel: ComponentTypes {}
+extension PresentingModel: ComponentTypes {}

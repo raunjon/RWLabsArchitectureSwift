@@ -8,7 +8,7 @@ private final class StubErrorService: ErrorService {
 // A leaf model: no Destination, no Connections
 
 @Component
-final class MacroLeafModel: ComponentModel<MacroLeafModel.State, MacroLeafModel.Action, MacroLeafModel.Output> {
+final class MacroLeafModel: ComponentModel<MacroLeafModel> {
     struct State { var count = 0 }
     enum Action { case tap }
     enum Output { case tapped }
@@ -22,14 +22,14 @@ final class MacroLeafModel: ComponentModel<MacroLeafModel.State, MacroLeafModel.
 // A model with no Action or Output at all
 
 @Component
-final class MacroStaticModel: ComponentModel<MacroStaticModel.State, EmptyAction, EmptyOutput> {
+final class MacroStaticModel: ComponentModel<MacroStaticModel> {
     struct State {}
 }
 
 // A parent with every kind of child
 
 @Component
-final class MacroParentModel: ComponentModel<MacroParentModel.State, MacroParentModel.Action, MacroParentModel.Output> {
+final class MacroParentModel: ComponentModel<MacroParentModel> {
     struct State {
         var leaf = MacroLeafModel.State()
         var optionalLeaf: MacroLeafModel.State?
@@ -43,7 +43,7 @@ final class MacroParentModel: ComponentModel<MacroParentModel.State, MacroParent
 
     var leafTaps = 0
 
-    final class Connections: ViewModelConnections<MacroParentModel> {
+    final class Connections: ConnectionsBase {
         lazy var leaf = Connection<MacroLeafModel> { [weak parent] _ in parent?.leafTaps += 1 }
             .connect(from: parent!, to: \.leaf)
         lazy var detail = Connection<MacroLeafModel>()
@@ -63,7 +63,7 @@ final class MacroParentModel: ComponentModel<MacroParentModel.State, MacroParent
 // Declaring things yourself overrides the generated versions
 
 @Component
-final class MacroCustomModel: ComponentModel<MacroCustomModel.State, MacroCustomModel.Action, MacroCustomModel.Output> {
+final class MacroCustomModel: ComponentModel<MacroCustomModel> {
     struct State: ViewModelState {
         var isLoading = true
         var error: (any Error)?
@@ -169,10 +169,10 @@ final class ComponentMacroTests: XCTestCase {
     }
 }
 
-// The header names Output, which @Component generates
+// Output is left out; @Component generates it
 
 @Component
-final class MacroNoOutputModel: ComponentModel<MacroNoOutputModel.State, MacroNoOutputModel.Action, MacroNoOutputModel.Output> {
+final class MacroNoOutputModel: ComponentModel<MacroNoOutputModel> {
     struct State {}
     enum Action { case go }
     override func send(_ action: Action) {}
