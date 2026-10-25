@@ -2,227 +2,56 @@
 //  BaseView.swift
 //  RWLabsArchitecture
 //
-//  Protocol for ViewModel-driven SwiftUI views with content separation
-//  Provides automatic lifecycle handling and clean architecture patterns
+//  Protocol for ViewModel-driven SwiftUI views
 //
 
 import SwiftUI
 
 // MARK: - BaseView Protocol
 
-/// Protocol for SwiftUI views that follow the ViewModel pattern
+/// A SwiftUI view driven by a ViewModel.
 ///
-/// `BaseView` provides a foundation for building views that:
-/// - Are driven by a ViewModel with State/Action/Output pattern
-/// - Separate content rendering from navigation/lifecycle logic
-/// - Automatically handle view lifecycle (onAppear)
+/// Conformers provide `model` and `content`; the default `body` renders
+/// `content` and calls `model.onAppear()` when the view appears.
 ///
-/// # Architecture Pattern
+/// Feature screens normally conform to `ComponentView` (which refines
+/// `BaseView`) rather than to `BaseView` directly.
 ///
-/// ```
-/// BaseView
-///     ├─ model: VM (state management)
-///     ├─ content: Content (UI rendering)
-///     └─ body (lifecycle + content)
-/// ```
-///
-/// The pattern enforces separation between:
-/// - **Content**: Pure UI rendering logic
-/// - **Body**: Navigation wrapper, lifecycle, and chrome
-/// - **ViewModel**: Business logic and state
-///
-/// # Usage
-///
-/// ## Simple View
 /// ```swift
-/// struct ProductListView: BaseView {
-///     typealias VM = ProductListViewModel
-///
-///     @StateObject var model: VM
-///
-///     var content: some View {
-///         List(model.products, id: \.id) { product in
-///             ProductRow(product: product)
-///                 .onTapGesture {
-///                     model.send(.productTapped(product))
-///                 }
-///         }
-///         .navigationTitle("Products")
-///     }
-/// }
-/// ```
-///
-/// ## With Loading State
-/// ```swift
-/// struct UserProfileView: BaseView {
-///     @StateObject var model: UserProfileViewModel
-///
-///     var content: some View {
-///         ZStack {
-///             if model.isLoading {
-///                 ProgressView()
-///             } else if let user = model.user {
-///                 ProfileContentView(user: user)
-///             } else {
-///                 EmptyStateView()
-///             }
-///         }
-///     }
-/// }
-/// ```
-///
-/// ## With Toolbar
-/// ```swift
-/// struct SettingsView: BaseView {
-///     @StateObject var model: SettingsViewModel
+/// struct SettingsView: ComponentView {
+///     @ObservedObject var model: SettingsModel
 ///
 ///     var content: some View {
 ///         Form {
-///             Section("Appearance") {
-///                 Toggle("Dark Mode", isOn: $model.isDarkMode)
-///             }
-///
-///             Section("Account") {
-///                 Button("Sign Out") {
-///                     model.send(.signOutTapped)
-///                 }
-///             }
-///         }
-///         .navigationTitle("Settings")
-///         .toolbar {
-///             ToolbarItem(placement: .navigationBarTrailing) {
-///                 Button("Done") {
-///                     model.send(.doneTapped)
-///                 }
-///             }
+///             Toggle("Dark Mode", isOn: model.binding(\.isDarkMode))
+///             Button("Sign Out") { model.send(.signOutTapped) }
 ///         }
 ///     }
 /// }
 /// ```
 ///
-/// # Lifecycle Handling
-///
-/// The default `body` implementation automatically calls `model.onAppear()`:
-/// ```swift
-/// public extension BaseView {
-///     var body: some View {
-///         content
-///             .onAppear {
-///                 model.onAppear()  // Automatic
-///             }
-///     }
-/// }
-/// ```
-///
-/// This ensures consistent lifecycle handling across all views without boilerplate.
-///
-/// # Benefits
-///
-/// 1. **Separation of Concerns**: Content is separate from lifecycle/navigation
-/// 2. **Automatic Lifecycle**: onAppear() called automatically
-/// 3. **Testability**: Content can be tested independently
-/// 4. **Consistency**: Enforces standard patterns across codebase
-/// 5. **Composability**: Works with Navigatable for full ComponentView
-///
-/// # Default Body Implementation
-///
-/// BaseView provides a default body that:
-/// - Renders the `content` property
-/// - Calls `model.onAppear()` when view appears
-/// - Can be overridden for custom behavior (e.g., when using with Navigatable)
-///
-/// # Associated Types
-///
-/// - **VM**: The ViewModel type (must conform to `ViewModel` protocol)
-/// - **Content**: The SwiftUI view type for content rendering
-///
-/// # Requirements
-///
-/// Conforming types must provide:
-/// - `var model: VM` - The ViewModel instance
-/// - `var content: Content` - The content view
-///
-/// # When to Use
-///
-/// - **ViewModel-Driven Views**: Any view managed by a ViewModel
-/// - **Consistent Lifecycle**: Views needing automatic onAppear handling
-/// - **Content Separation**: Complex views benefiting from clean separation
-/// - **Navigation Ready**: Views that may later add navigation (via Navigatable)
-///
-/// # When NOT to Use
-///
-/// - **Stateless Components**: Use plain `View` or `StatelessComponentView`
-/// - **Simple Views**: Overhead not worth it for trivial views
-/// - **Non-ViewModel Views**: Views not following the ViewModel pattern
-///
-/// # Combining with Navigatable
-///
-/// BaseView is designed to compose with Navigatable:
-/// ```swift
-/// public typealias ComponentView = BaseView & Navigatable
-/// ```
-///
-/// When combined, Navigatable's body takes precedence and wraps the
-/// content in a NavigationStack with routing capabilities.
+/// - Note: `onAppear()` runs every time the view appears (returning from a
+///   push, switching tabs, dismissing a sheet), not just once, so keep it
+///   safe to call repeatedly.
 public protocol BaseView: View {
-    /// The ViewModel type managing this view's state
+    /// The ViewModel type driving this view
     associatedtype Model: ViewModel
 
     /// The content view type
     associatedtype Content: View
 
-    /// The ViewModel instance
-    ///
-    /// Typically a `@StateObject` or `@ObservedObject` property:
-    /// ```swift
-    /// @StateObject var model: ProductListViewModel
-    /// ```
-    var model: Model { get set }
+    /// The ViewModel instance: `@ObservedObject` when a parent or connection
+    /// owns it, `@StateObject` when this view owns it
+    var model: Model { get }
 
-    /// The content to display
-    ///
-    /// Should contain only UI rendering logic, no navigation or lifecycle:
-    /// ```swift
-    /// var content: some View {
-    ///     List(model.items) { item in
-    ///         ItemRow(item: item)
-    ///     }
-    /// }
-    /// ```
+    /// The view's UI; `body` wraps it with lifecycle handling
     @ViewBuilder var content: Content { get }
 }
 
 // MARK: - Default Body Implementation
 
 public extension BaseView {
-    /// Default body implementation with automatic lifecycle handling
-    ///
-    /// This implementation:
-    /// - Renders the `content` view
-    /// - Automatically calls `model.onAppear()` when view appears
-    ///
-    /// # Override
-    ///
-    /// This implementation is automatically overridden when BaseView is
-    /// combined with Navigatable (via ComponentView typealias).
-    ///
-    /// # Example Flow
-    ///
-    /// ```
-    /// View appears
-    ///     ↓
-    /// body is called
-    ///     ↓
-    /// content is rendered
-    ///     ↓
-    /// .onAppear fires
-    ///     ↓
-    /// model.onAppear() called
-    ///     ↓
-    /// ViewModel loads data, updates state
-    ///     ↓
-    /// View re-renders with new state
-    /// ```
+    /// Renders `content` and calls `model.onAppear()` when it appears
     var body: some View {
         content
             .onAppear {
@@ -231,39 +60,18 @@ public extension BaseView {
     }
 }
 
+// MARK: - Tappable
+
+/// Makes a `BaseView` tappable as a whole.
+///
+/// The default `body` gives the entire view a rectangular hit area
+/// (including transparent regions) and calls `onTap()` when it's tapped.
 public protocol Tappable {
     func onTap()
 }
 
-public extension BaseView where Self:Tappable {
-    /// Default body implementation with automatic lifecycle handling
-    ///
-    /// This implementation:
-    /// - Renders the `content` view
-    /// - Automatically calls `model.onAppear()` when view appears
-    ///
-    /// # Override
-    ///
-    /// This implementation is automatically overridden when BaseView is
-    /// combined with Navigatable (via ComponentView typealias).
-    ///
-    /// # Example Flow
-    ///
-    /// ```
-    /// View appears
-    ///     ↓
-    /// body is called
-    ///     ↓
-    /// content is rendered
-    ///     ↓
-    /// .onAppear fires
-    ///     ↓
-    /// model.onAppear() called
-    ///     ↓
-    /// ViewModel loads data, updates state
-    ///     ↓
-    /// View re-renders with new state
-    /// ```
+public extension BaseView where Self: Tappable {
+    /// Renders `content`, calls `model.onAppear()`, and calls `onTap()` on tap
     var body: some View {
         content
             .contentShape(Rectangle())
@@ -275,76 +83,3 @@ public extension BaseView where Self:Tappable {
             }
     }
 }
-
-// MARK: - Architecture Notes
-
-/*
- # Design Rationale
-
- ## Content Separation
-
- By requiring a separate `content` property, BaseView enforces a clean
- separation between:
-
- 1. **Content Rendering** (content property)
-    - Pure UI layout and styling
-    - Data display
-    - User interaction handlers
-    - Toolbar, navigation title, etc.
-
- 2. **Navigation Chrome** (body property)
-    - NavigationStack wrapper
-    - Routing logic
-    - Modal/alert presentation
-    - Lifecycle hooks
-
- This separation:
- - Makes views easier to test (test content independently)
- - Improves code organization
- - Enables reusability
- - Clarifies responsibilities
-
- ## Automatic Lifecycle
-
- The default body implementation ensures `model.onAppear()` is always
- called without developers needing to remember to add it. This:
- - Reduces boilerplate
- - Prevents bugs from missing lifecycle calls
- - Provides consistent behavior
- - Centralizes lifecycle logic in ViewModels
-
- ## Protocol Composition
-
- BaseView is designed to compose with Navigatable:
-
- ```swift
- BaseView + Navigatable = ComponentView
-
- BaseView provides:
- - ViewModel integration
- - Content separation
- - Lifecycle handling
-
- Navigatable adds:
- - NavigationStack
- - Routing
- - Modal/alert support
-
- Combined = Full-featured component
- ```
-
- This composition pattern allows views to opt into navigation features
- only when needed, keeping simple views lightweight.
-
- ## Example Hierarchy
-
- ```
- Plain View (no ViewModel)
-     ↓
- BaseView (adds ViewModel + lifecycle)
-     ↓
- ComponentView (BaseView & Navigatable, adds navigation)
- ```
-
- Each level adds capabilities without forcing unnecessary complexity.
- */

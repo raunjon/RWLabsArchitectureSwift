@@ -2,158 +2,124 @@
 //  Route.swift
 //  RWLabsArchitecture
 //
-//  URL routing system for deep linking and navigation
+//  A parsed deep-link URL with path-pattern matching and URL building
 //
 
 import Foundation
 
 // MARK: - Route
 
-/// Represents a parsed URL route for deep linking and navigation
+/// A deep link reduced to a path and query items, the same for custom-scheme
+/// links and universal links:
 ///
-/// `Route` encapsulates the components of a URL (path, parameters, query items)
-/// and provides pattern matching capabilities for routing decisions.
+/// | URL | `path` |
+/// |---|---|
+/// | `myapp://product/123?ref=mail` | `/product/123` |
+/// | `https://example.com/product/123?ref=mail` | `/product/123` |
 ///
-/// # Example
 /// ```swift
-/// let url = URL(string: "myapp://product/123?sort=price")!
 /// let route = Route(url: url)
-/// // route.path = "/product/123"
-/// // route.queryItems = ["sort": "price"]
+/// if let params = route.matches(pattern: "/product/:id") {
+///     open(productId: params["id"]!, referrer: route.queryItems["ref"])
+/// }
 /// ```
 public struct Route: Hashable {
-
-    // MARK: - Properties
-
-    /// The path component of the URL
-    /// - Example: `"/product/123"`
+    /// The path, always starting with `/`
     public let path: String
 
-    /// Path parameters extracted from pattern matching
-    /// - Example: `["id": "123"]` from pattern `"/product/:id"`
-    public let parameters: [String: String]
-
-    /// Query string parameters from the URL
-    /// - Example: `["sort": "price"]` from `"?sort=price"`
+    /// Query items by name (the last value wins if a name repeats)
     public let queryItems: [String: String]
 
-    // MARK: - Initialization
-
-    /// Creates a route with explicit components
-    /// - Parameters:
-    ///   - path: The URL path
-    ///   - parameters: Path parameters (default: empty)
-    ///   - queryItems: Query string parameters (default: empty)
-    public init(
-        path: String,
-        parameters: [String: String] = [:],
-        queryItems: [String: String] = [:]
-    ) {
-        self.path = path
-        self.parameters = parameters
+    public init(path: String, queryItems: [String: String] = [:]) {
+        self.path = path.hasPrefix("/") ? path : "/" + path
         self.queryItems = queryItems
     }
 
-    /// Creates a route by parsing a URL
-    /// - Parameter url: The URL to parse
-    /// - Note: Parameters will be extracted during pattern matching
+    /// Parses `url`. For a custom scheme, the host is the first path segment
+    /// (`myapp://product/123` has host `product`), so it's put back in front of the path.
     public init(url: URL) {
-        self.path = url.path
+        let urlPath = url.path
+        if !Self.isWebScheme(url.scheme), let host = url.host, !host.isEmpty {
+            self.path = "/" + host + (urlPath == "/" ? "" : urlPath)
+        } else {
+            self.path = urlPath.isEmpty ? "/" : urlPath
+        }
 
-        // Extract query items from URL components
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         self.queryItems = components?.queryItems?.reduce(into: [:]) {
             $0[$1.name] = $1.value ?? ""
         } ?? [:]
+    }
 
-        // Parameters will be extracted during pattern matching
-        self.parameters = [:]
+    static func isWebScheme(_ scheme: String?) -> Bool {
+        guard let scheme = scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https"
     }
 }
 
-// MARK: - Route Pattern Matching
+// MARK: - Pattern Matching
 
-/// Extension providing pattern matching capabilities for routes
 extension Route {
-
-    /// Matches this route against a URL pattern and extracts parameters
+    /// Matches `path` against `pattern` and returns the `:name` placeholders' values,
+    /// or `nil` if it doesn't match. Literal segments must match exactly; trailing
+    /// slashes are ignored.
     ///
-    /// Patterns use `:paramName` syntax for dynamic segments:
-    /// - Pattern: `"/product/:id"` matches path `"/product/123"` → `["id": "123"]`
-    /// - Pattern: `"/user/:userId/post/:postId"` matches `"/user/42/post/99"` → `["userId": "42", "postId": "99"]`
-    ///
-    /// - Parameter pattern: The URL pattern with optional parameter placeholders
-    /// - Returns: Dictionary of extracted parameters, or `nil` if pattern doesn't match
-    ///
-    /// # Example
     /// ```swift
-    /// let route = Route(path: "/product/123")
-    /// if let params = route.matches(pattern: "/product/:id") {
-    ///     print(params["id"]) // "123"
-    /// }
+    /// Route(path: "/product/123").matches(pattern: "/product/:id")   // ["id": "123"]
     /// ```
     public func matches(pattern: String) -> [String: String]? {
         let patternComponents = pattern.split(separator: "/").map(String.init)
         let pathComponents = path.split(separator: "/").map(String.init)
-
-        // Pattern and path must have the same number of components
         guard patternComponents.count == pathComponents.count else { return nil }
 
         var params: [String: String] = [:]
-
         for (patternPart, pathPart) in zip(patternComponents, pathComponents) {
-            if patternPart.starts(with: ":") {
-                // Extract parameter from placeholder (e.g., ":id" → "id")
-                let key = String(patternPart.dropFirst())
-                params[key] = pathPart
+            if patternPart.hasPrefix(":") {
+                params[String(patternPart.dropFirst())] = pathPart
             } else if patternPart != pathPart {
-                // Literal segments must match exactly
                 return nil
             }
         }
-
         return params
     }
 
-    /// Checks if this route matches a pattern without extracting parameters
-    /// - Parameter pattern: The URL pattern to match against
-    /// - Returns: `true` if the route matches the pattern, `false` otherwise
-    public func matches(pattern: String) -> Bool {
+    /// Whether `path` matches `pattern`
+    public func isMatch(_ pattern: String) -> Bool {
         matches(pattern: pattern) != nil
     }
 }
 
-// MARK: - Route Builder
+// MARK: - URL Building
 
-/// Extension providing URL construction capabilities from routes
 extension Route {
-
-    /// Constructs a complete URL from the route components
+    /// Builds a URL for this route.
     ///
-    /// - Parameters:
-    ///   - scheme: The URL scheme (default: `"myapp"`)
-    ///   - host: The URL host (default: empty, resulting in no host)
-    /// - Returns: The constructed URL, or `nil` if URL components are invalid
+    /// - With `host`: `scheme://host/path` (e.g. a universal link, `https://example.com/product/123`).
+    /// - Without `host`, for a custom scheme: the first path segment becomes the host,
+    ///   giving the standard form `myapp://product/123`. Web schemes need a host.
     ///
-    /// # Example
-    /// ```swift
-    /// let route = Route(path: "/product/123", queryItems: ["sort": "price"])
-    /// let url = route.url(scheme: "myapp", host: "store")
-    /// // Result: "myapp://store/product/123?sort=price"
-    /// ```
-    public func url(scheme: String = "myapp", host: String = "") -> URL? {
+    /// Query items are sorted by name, so the same route always builds the same URL.
+    public func url(scheme: String, host: String? = nil) -> URL? {
         var components = URLComponents()
         components.scheme = scheme
-        components.host = host.isEmpty ? nil : host
-        components.path = path
 
-        // Add query items if present
-        if !queryItems.isEmpty {
-            components.queryItems = queryItems.map {
-                URLQueryItem(name: $0.key, value: $0.value)
-            }
+        if let host {
+            components.host = host
+            components.path = path
+        } else if !Self.isWebScheme(scheme) {
+            let segments = path.split(separator: "/").map(String.init)
+            components.host = segments.first ?? ""
+            let rest = segments.dropFirst()
+            components.path = rest.isEmpty ? "" : "/" + rest.joined(separator: "/")
+        } else {
+            return nil
         }
 
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+                .sorted { $0.key < $1.key }
+                .map { URLQueryItem(name: $0.key, value: $0.value) }
+        }
         return components.url
     }
 }

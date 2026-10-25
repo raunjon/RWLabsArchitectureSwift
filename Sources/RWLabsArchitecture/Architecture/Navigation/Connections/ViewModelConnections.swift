@@ -2,209 +2,79 @@
 //  ViewModelConnections.swift
 //  RWLabsArchitecture
 //
-//  Protocol and helper types for managing ViewModel connections
-//  Defines the pattern for parent-child ViewModel relationships
+//  The base class for a ViewModel's connections, and its protocols
 //
 
-import SwiftUI
-import Combine
+import Foundation
 
-// MARK: - HasConnections Protocol
+// MARK: - ViewModelConnections
 
-/// Protocol that ViewModels can adopt to declare they support connections
+/// The base class for a ViewModel's `Connections`: one `lazy var` per child.
 ///
-/// ViewModels that manage child ViewModels should conform to this protocol
-/// to indicate they have a connections object.
-///
-/// # Example
 /// ```swift
-/// class ProductListViewModel: BaseViewModel, HasConnections {
-///     typealias ConnectionsType = Connections
+/// lazy var connections = Connections(parent: self)
 ///
-///     lazy var connections: Connections = {
-///         Connections(parent: self)
-///     }()
+/// final class Connections: ViewModelConnections<ProfileModel> {
+///     lazy var editor = Connection<EditorModel> { [weak parent] output in … }
+///         .connect(state: \.destination, case: \.editor, parent: parent)
+///
+///     lazy var stats: StatsModel = Connection<StatsModel>()
+///         .connect(from: parent!, to: \.stats)
+///
+///     override func setupConnections() {
+///         _ = editor
+///     }
 /// }
 /// ```
+///
+/// `init(parent:)` calls `setupConnections()`, then gives every evaluated connection its parent.
+/// Touch each case connection in `setupConnections()`: a `lazy var` is invisible until it's
+/// first read, and touching it makes the connection observe the parent from the start
+/// (deep links also rely on this to find the child).
+@MainActor
+open class ViewModelConnections<ParentViewModel: ViewModel>: @MainActor Connectable {
+    /// The ViewModel these connections belong to (weak, to avoid a retain cycle)
+    public weak var parent: ParentViewModel?
+
+    required public init(parent: ParentViewModel) {
+        self.parent = parent
+        setupConnections()
+        wireConnections()
+    }
+
+    /// Override to touch each `lazy var` case connection (`_ = editor`) so it's created now
+    open func setupConnections() {}
+
+    /// Hands the parent to every connection property that has been evaluated
+    private func wireConnections() {
+        guard let parent else { return }
+        for child in Mirror(reflecting: self).children {
+            (child.value as? AnyConnection)?._setupParent(parent)
+        }
+    }
+}
+
+// MARK: - Connectable
+
+/// An object that holds a ViewModel's connections and a weak reference back to it
+public protocol Connectable: AnyObject {
+    associatedtype ParentViewModel: AnyObject
+
+    var parent: ParentViewModel? { get set }
+
+    init(parent: ParentViewModel)
+}
+
+// MARK: - HasConnections
+
+/// A ViewModel that exposes its connections, so deep links can continue into its children.
+///
+/// Adopt it on models that have destinations: `final class HomeModel: ComponentModel<…>, HasConnections`.
+@MainActor
 public protocol HasConnections: AnyObject {
-    /// The type of connections this ViewModel uses
-    associatedtype ConnectionsType: Connectable
+    /// The type of connections this ViewModel uses (usually a `ViewModelConnections` subclass)
+    associatedtype ConnectionsType: AnyObject
 
     /// The connections instance managing child ViewModels
     var connections: ConnectionsType { get }
 }
-
-// MARK: - ViewModelConnections Protocol
-
-/// Base protocol for all Connections classes
-///
-/// Each ViewModel's Connections class should conform to this protocol.
-/// Connections classes centralize the management of child ViewModels,
-/// providing a clean separation between parent logic and child coordination.
-///
-/// # Architecture Benefits
-/// - **Organized**: All child ViewModels in one place
-/// - **Type-Safe**: Leverages Swift generics for compile-time safety
-/// - **Testable**: Easy to mock connections for testing
-/// - **Lazy**: Child ViewModels created only when needed
-///
-/// # Example
-/// ```swift
-/// class Connections: ViewModelConnections {
-///     typealias ParentViewModel = ProductListViewModel
-///     weak var parent: ProductListViewModel?
-///
-///     required init(parent: ProductListViewModel) {
-///         self.parent = parent
-///     }
-///
-///     lazy var detailViewModel: ProductDetailViewModel = {
-///         let vm = ProductDetailViewModel(initialState: .init())
-///         vm.onOutput { [weak parent] output in
-///             parent?.handleDetailOutput(output)
-///         }
-///         return vm
-///     }()
-/// }
-/// ```
-public protocol Connectable: AnyObject {
-
-    // MARK: - Associated Types
-
-    /// The type of parent ViewModel this connections class serves
-    associatedtype ParentViewModel: AnyObject
-
-    // MARK: - Required Properties
-
-    /// Weak reference to the parent ViewModel
-    ///
-    /// Must be weak to avoid retain cycles in the parent-child relationship.
-    var parent: ParentViewModel? { get set }
-
-    // MARK: - Required Initializer
-
-    /// Initializes the connections with a parent ViewModel
-    /// - Parameter parent: The parent ViewModel that owns this connections instance
-    init(parent: ParentViewModel)
-}
-
-// MARK: - ObservableObject Extension
-
-extension ObservableObject {
-
-    /// Helper to create connections for a ViewModel
-    ///
-    /// Provides a type-safe way to create connections instances while
-    /// ensuring the parent type matches the connections' required type.
-    ///
-    /// - Parameter connectionsType: The type of connections to create
-    /// - Returns: A new connections instance linked to this ViewModel
-    ///
-    /// # Example
-    /// ```swift
-    /// class MyViewModel: ObservableObject {
-    ///     lazy var connections: Connections = {
-    ///         createConnections(Connections.self)
-    ///     }()
-    ///
-    ///     class Connections: ViewModelConnections {
-    ///         weak var parent: MyViewModel?
-    ///         required init(parent: MyViewModel) {
-    ///             self.parent = parent
-    ///         }
-    ///     }
-    /// }
-    /// ```
-    func createConnections<T: Connectable>(_ connectionsType: T.Type) -> T where T.ParentViewModel == Self {
-        T(parent: self)
-    }
-}
-
-// MARK: - Connection Template Documentation
-
-/// Connection Pattern Template
-///
-/// Use this template when creating Connections classes in your ViewModels:
-///
-/// ```swift
-/// class YourViewModel: BaseViewModel<State, Action, Output, Destination> {
-///
-///     // MARK: - Connections
-///
-///     lazy var connections: Connections = {
-///         Connections(parent: self)
-///     }()
-///
-///     class Connections: ViewModelConnections {
-///         weak var parent: YourViewModel?
-///
-///         required init(parent: YourViewModel) {
-///             self.parent = parent
-///         }
-///
-///         // MARK: - Child ViewModels
-///
-///         // Singleton child (reused across accesses)
-///         lazy var childViewModel: ChildViewModel = {
-///             let model = ChildViewModel(initialState: .init())
-///             model.onOutput { [weak parent] output in
-///                 parent?.handleChildOutput(output)
-///             }
-///             return model
-///         }()
-///
-///         // Factory method (new instance each call)
-///         func createDetailViewModel(id: String) -> DetailViewModel {
-///             let model = DetailViewModel(initialState: .init(id: id))
-///             model.onOutput { [weak parent] output in
-///                 parent?.handleDetailOutput(output)
-///             }
-///             return model
-///         }
-///     }
-///
-///     // MARK: - Output Handlers
-///
-///     private func handleChildOutput(_ output: ChildViewModel.Output) {
-///         switch output {
-///         case .someEvent:
-///             // Handle child event
-///             break
-///         }
-///     }
-/// }
-/// ```
-///
-/// # Patterns
-///
-/// ## 1. Singleton Children (Lazy Properties)
-/// Use for child ViewModels that should be reused:
-/// ```swift
-/// lazy var settings: SettingsViewModel = {
-///     let vm = SettingsViewModel(initialState: .init())
-///     vm.onOutput { [weak parent] output in
-///         parent?.handleSettingsOutput(output)
-///     }
-///     return vm
-/// }()
-/// ```
-///
-/// ## 2. Factory Methods (Dynamic Creation)
-/// Use for creating new child instances:
-/// ```swift
-/// func createItemDetail(id: Int) -> ItemDetailViewModel {
-///     let vm = ItemDetailViewModel(initialState: .init(id: id))
-///     vm.onOutput { [weak parent] output in
-///         parent?.handleItemDetailOutput(output)
-///     }
-///     return vm
-/// }
-/// ```
-///
-/// ## 3. Tab-Based Children
-/// For tab bar or segmented control UIs:
-/// ```swift
-/// lazy var homeTab: HomeViewModel = { /* ... */ }()
-/// lazy var searchTab: SearchViewModel = { /* ... */ }()
-/// lazy var profileTab: ProfileViewModel = { /* ... */ }()
-/// ```

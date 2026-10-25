@@ -8,88 +8,94 @@
 import Combine
 import SwiftUI
 
-// MARK: - Base ViewModel Implementation
-/// Base class providing common ViewModel functionality
-@MainActor
-open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output: ViewModelOutput>: @MainActor @preconcurrency ViewModel, @MainActor OutputableComponent, @preconcurrency Equatable, @preconcurrency Hashable, @MainActor StateComponent {
-    public typealias Destination = State.Destination
-    
-    public let id: UUID = UUID()
+// MARK: - BaseViewModel
 
+/// The base class for ViewModels: holds `state`, emits `outputs`, and provides
+/// loading, error, binding and async helpers.
+///
+/// Feature ViewModels subclass `ComponentModel`, which inherits from this.
+@MainActor
+open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output: ViewModelOutput>: @MainActor ViewModel {
+    public typealias Destination = State.Destination
+
+    /// Identity; equality and hashing use only this
+    public let id = UUID()
+
+    /// The model's state; views and connections observe it
     @Published public var state: State
 
+    /// App-provided error handler. Every app must register one before creating a ViewModel.
+    @Injected var errorService: ErrorService
+
+    /// Subject behind `outputs`; emit through `sendOutput(_:)`
     public let outputSubject = PassthroughSubject<Output, Never>()
 
+    /// Events for the parent, usually consumed by a connection's output handler
     public var outputs: AnyPublisher<Output, Never> {
         outputSubject.eraseToAnyPublisher()
     }
-        
+
+    /// Subscriptions kept alive for the model's lifetime
     public var cancellables = Set<AnyCancellable>()
-    
-    public var outputHandler: ((Output) -> Void)?
-        
+
+    /// Current navigation destination; the same as reading or writing `state.destination`
     public var destination: Destination? {
-        get {
-            self.state.destination
-        } set {
-            self.state.destination = nil
-            Async.main {
-                self.state.destination = newValue
-            }
-        }
+        get { state.destination }
+        set { state.destination = newValue }
     }
-    
+
+    /// Clears `destination`
     public func dismiss() {
         self.destination = nil
     }
-    
+
     required public init(initialState: State) {
         self.state = initialState
     }
 
-    /// Override this method to handle actions
+    /// Handles an action; subclasses must override
     open func send(_ action: Action) {
         fatalError("Must override send(_:) in subclass")
     }
 
-    /// Send an output (side effect)
+    /// Emits `output` to the parent
     public func sendOutput(_ output: Output) {
         outputSubject.send(output)
     }
 
-    /// Update state on main thread
-    public func updateState(_ update: (inout State) -> Void) {
-        update(&state)
-    }
-
-    /// Handle errors
+    /// Stores `error` in `state.error` and forwards it to the `ErrorService`
     open func handleError(_ error: Error) {
         state.error = error
+        errorService.handleError(error)
     }
 
-    /// Start loading
+    /// Sets `state.isLoading` to `true`
     public func startLoading() {
         updateLoading(to: true)
     }
 
-    /// Stop loading
+    /// Sets `state.isLoading` to `false`
     public func stopLoading() {
         updateLoading(to: false)
     }
 
+    /// Sets `state.isLoading`
     public func updateLoading(to loading: Bool) {
         updateState {
             $0.isLoading = loading
         }
     }
-    /// Store cancellable
+
+    /// Keeps `cancellable` alive for the model's lifetime
     public func store(_ cancellable: AnyCancellable) {
         cancellables.insert(cancellable)
     }
-    
+
+    /// Called by the view's `body` each time it appears, so it may run many times
     open func onAppear() {
     }
-        
+
+    /// Subscribes `handler` to `outputs` for the model's lifetime
     @discardableResult
     public func onOutput(_ handler: @escaping ((Output) -> Void)) -> Self {
         store(
@@ -97,78 +103,61 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
         )
         return self
     }
-    
+
     public static func == (lhs: BaseViewModel<State, Action, Output>, rhs: BaseViewModel<State, Action, Output>) -> Bool {
         lhs.id == rhs.id
     }
-    
+
     public func hash(into hasher: inout Hasher) {
-        hasher.combine(self.id.description)
+        hasher.combine(id)
     }
-    
-    @MainActor
+
+    // MARK: - Bindings
+
+    /// A `Binding` into `state` at `keyPath`.
+    /// Writes that don't change an `Equatable` value are skipped.
     public func binding<Value>(_ keyPath: WritableKeyPath<State, Value>, file: StaticString = #filePath, line: UInt = #line) -> Binding<Value> {
         Binding(
             get: { self.state[keyPath: keyPath] },
-            set: { value in
-                guard self.setBindingValue(keyPath, value, file: file, line: line) else { return }
+            set: { newValue in
+                if let current = self.state[keyPath: keyPath] as? any Equatable,
+                   Self.isEqual(current, newValue) {
+                    return
+                }
+                self.state[keyPath: keyPath] = newValue
             }
         )
     }
-    
-    @MainActor
-    private func setBindingValue<Value>(_ keyPath: WritableKeyPath<State, Value>, _ value: Value, file: StaticString, line: UInt) -> Bool {
-        let start = Date()
-        let oldState = self.state
-        let oldValue = self.state[keyPath: keyPath]
-        // don't continue if change doesn't lead to state change
-        guard !areMaybeEqual(oldValue, value) else { return false }
-        
-        self.state[keyPath: keyPath] = value
-        return true
-    }
-    
-    func areMaybeEqual(_ lhs: Any, _ rhs: Any) -> Bool {
-        if let lhs = lhs as? any Equatable {
-            if areEqual(lhs, rhs) {
-                return true
-            }
-        }
-        return false
-    }
-    
-    func areEqual<A: Equatable>(_ lhs: A, _ rhs: Any) -> Bool {
+
+    private nonisolated static func isEqual<A: Equatable>(_ lhs: A, _ rhs: Any) -> Bool {
         lhs == (rhs as? A)
     }
-    
-    
-    public final func performAsync<T>(
+
+    // MARK: - Async Work
+
+    /// Runs `operation` in a `Task` on the main actor with `isLoading` on.
+    ///
+    /// The result is passed to `then`. A thrown error goes to `handleError(_:)`,
+    /// except `CancellationError`, which is ignored. Returns the task so the
+    /// caller can cancel it.
+    ///
+    /// ```swift
+    /// perform { try await api.save(item) }
+    /// perform { try await api.fetchItems() } then: { state.items = $0 }
+    /// ```
+    @discardableResult
+    public final func perform<T>(
         _ operation: @escaping () async throws -> T,
-        response: @escaping (T) -> Void
-    ) {
+        then: ((T) -> Void)? = nil
+    ) -> Task<Void, Never> {
         startLoading()
-        
-        Task {
-            defer { stopLoading() } // always runs
-            
+        return Task {
+            defer { stopLoading() }
             do {
                 let result = try await operation()
-                response(result)
-            } catch {
-                handleError(error)
-            }
-        }
-    }
-    
-    
-    public final func perform<T>(
-        _ operation: @escaping () async throws -> T
-    ) -> Void {
-        startLoading()
-        Task {
-            defer { stopLoading() } // always runs
-            do {
-              try await operation()
+                then?(result)
+            } catch is CancellationError {
+                // Cancelled on purpose; not an error to report
             } catch {
                 handleError(error)
             }
@@ -176,7 +165,9 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
     }
 }
 
-// MARK: - Empty Implementations
+// MARK: - Empty Types
+
+/// State for a model with no data of its own
 public struct EmptyState: ViewModelState {
     public typealias Destination = EmptyDestination
 
@@ -187,32 +178,27 @@ public struct EmptyState: ViewModelState {
     public init() {}
 }
 
-public struct EmptyDestination: @preconcurrency ViewModelDestination {
-    public static let featureId: String = "empty"
-    
-    public static var initialDestination: EmptyDestination { EmptyDestination() }
-    
-    public var presentationStyle: PresentationStyle = .popToRoot
-    
-    public init() {}
-    
-    public var id: String { "UUID().uuidString" }
+/// Destination for a model that never navigates. It has no cases, so
+/// `destination` can only ever be `nil`.
+public enum EmptyDestination: ViewModelDestination {
+    public var id: String { switch self {} }
 }
 
-public struct EmptyAction: ViewModelAction {
-    public init() {}
-}
+/// Action type for a model that handles no actions
+public enum EmptyAction: ViewModelAction {}
 
-public struct EmptyOutput: ViewModelOutput {
-    public init() {}
-}
+/// Output type for a model that never emits
+public enum EmptyOutput: ViewModelOutput {}
 
 // MARK: - Common State Properties
+
 public extension ViewModelState {
+    /// Whether `error` is set
     var hasError: Bool {
         error != nil
     }
 
+    /// Clears `error`
     mutating func clearError() {
         error = nil
     }

@@ -2,366 +2,165 @@
 //  DependencyContainer.swift
 //  RWLabsArchitecture
 //
-//  Dependency injection container and resolver
-//  Thread-safe service locator pattern for managing app dependencies
+//  Thread-safe registry for app dependencies
 //
 
 import Foundation
 
-// MARK: - Dependency Key Protocol
+// MARK: - DependencyContainer
 
-/// Protocol for defining dependency keys with default values
+/// The app's dependency registry, read by `@Injected`, `@LazyInjected` and `@OptionalInjected`.
 ///
-/// Implement this protocol to create type-safe dependency keys for use
-/// with the `DependencyValues` system.
-///
-/// # Example
 /// ```swift
-/// struct APIServiceKey: DependencyKey {
-///     static var defaultValue: APIService {
-///         DefaultAPIService()
-///     }
-/// }
+/// let container = DependencyContainer.shared
+/// container.registerSingleton(ErrorService.self, instance: AppErrorService())  // one existing instance
+/// container.registerLazySingleton(Database.self) { Database(path: dbPath) }    // built on first resolve
+/// container.register(APIClient.self) { DefaultAPIClient() }                    // new instance per resolve
 ///
-/// extension DependencyValues {
-///     var apiService: APIService {
-///         get { self[APIServiceKey.self] }
-///         set { self[APIServiceKey.self] = newValue }
-///     }
-/// }
-/// ```
-public protocol DependencyKey {
-    /// The type of value this key provides
-    associatedtype Value
-
-    /// The default value to use when the dependency is not explicitly set
-    static var defaultValue: Value { get }
-}
-
-// MARK: - Dependency Container
-
-/// Thread-safe dependency injection container
-///
-/// `DependencyContainer` is a service locator that manages application dependencies.
-/// It supports both factory-based registration (new instance each time) and
-/// singleton registration (same instance always).
-///
-/// # Architecture
-/// - **Thread-Safe**: Uses `NSRecursiveLock` for thread safety
-/// - **Singleton**: Shared instance accessible globally
-/// - **Type-Safe**: Uses Swift generics for compile-time type checking
-/// - **Flexible**: Supports both factory and singleton patterns
-///
-/// # Registration Patterns
-///
-/// ## Factory Registration (New Instance Each Time)
-/// ```swift
-/// DependencyContainer.shared.register(APIService.self) {
-///     DefaultAPIService()
-/// }
-///
-/// let service1 = DependencyContainer.shared.resolve(APIService.self)
-/// let service2 = DependencyContainer.shared.resolve(APIService.self)
-/// // service1 !== service2 (different instances)
+/// let api = container.resolve(APIClient.self)
 /// ```
 ///
-/// ## Singleton Registration (Same Instance Always)
-/// ```swift
-/// let database = Database()
-/// DependencyContainer.shared.registerSingleton(Database.self, instance: database)
+/// Types are keyed by identity, so register a protocol as the protocol type
+/// (`ErrorService.self`) and resolve it the same way. Safe to use from any thread.
 ///
-/// let db1 = DependencyContainer.shared.resolve(Database.self)
-/// let db2 = DependencyContainer.shared.resolve(Database.self)
-/// // db1 === db2 (same instance)
-/// ```
-///
-/// # Common Usage Pattern
-/// ```swift
-/// // In AppDelegate or App struct
-/// func setupDependencies() {
-///     let container = DependencyContainer.shared
-///
-///     // Register services
-///     container.registerSingleton(UserSession.self, instance: UserSession())
-///     container.register(APIService.self) { DefaultAPIService() }
-///     container.register(Repository.self) {
-///         DefaultRepository(apiService: container.resolve(APIService.self))
-///     }
-/// }
-///
-/// // In ViewModels or other components
-/// class ProductViewModel {
-///     private let repository: Repository
-///
-///     init() {
-///         self.repository = DependencyContainer.shared.resolve(Repository.self)
-///     }
-/// }
-/// ```
-///
-/// # Testing
-/// ```swift
-/// override func setUp() {
-///     super.setUp()
-///
-///     // Clear existing dependencies
-///     DependencyContainer.shared.clear()
-///
-///     // Register test doubles
-///     DependencyContainer.shared.registerSingleton(
-///         APIService.self,
-///         instance: MockAPIService()
-///     )
-/// }
-/// ```
-public final class DependencyContainer {
+/// Registered singletons that conform to `Service` are started by
+/// `startServices()` and stopped by `stopServices()` (`AppCoordinator` calls both).
+public final class DependencyContainer: @unchecked Sendable {
+    /// The shared container
+    public static let shared = DependencyContainer()
 
-    // MARK: - Shared Instance
+    private enum Entry {
+        case instance(Any)
+        case factory(() -> Any)
+        case lazySingleton(() -> Any)
+    }
 
-    /// Shared singleton instance of the dependency container
-    ///
-    /// - Note: Uses `nonisolated(unsafe)` to allow access from any isolation context
-    public nonisolated(unsafe) static let shared = DependencyContainer()
+    private var entries: [ObjectIdentifier: Entry] = [:]
 
-    // MARK: - Private Properties
+    /// Keys in first-registration order, so services start in that order and stop in reverse
+    private var registrationOrder: [ObjectIdentifier] = []
 
-    /// Storage for registered dependencies
-    /// - Key: String representation of the type
-    /// - Value: Either a factory closure `() -> T` or a singleton instance `T`
-    private var dependencies: [String: Any] = [:]
+    /// Whether `startServices()` has run; lazy singletons created afterwards are started on creation
+    private var servicesStarted = false
 
-    /// Recursive lock for thread-safe access
+    /// Recursive so a factory can resolve its own dependencies while the lock is held
     private let lock = NSRecursiveLock()
 
-    // MARK: - Initialization
-
-    /// Private initializer to enforce singleton pattern
     private init() {}
 
     // MARK: - Registration
 
-    /// Registers a factory closure for creating new instances
-    ///
-    /// Each call to `resolve(_:)` will execute the factory and return a new instance.
-    ///
-    /// - Parameters:
-    ///   - type: The type to register
-    ///   - factory: Closure that creates a new instance
-    ///
-    /// # Example
-    /// ```swift
-    /// container.register(Logger.self) {
-    ///     FileLogger(path: "/logs")
-    /// }
-    ///
-    /// let logger1 = container.resolve(Logger.self) // New instance
-    /// let logger2 = container.resolve(Logger.self) // Another new instance
-    /// ```
+    /// Registers a factory; every `resolve` returns a new instance
     public func register<T>(_ type: T.Type, factory: @escaping () -> T) {
-        lock.lock()
-        defer { lock.unlock() }
-
-        let key = String(describing: type)
-        dependencies[key] = factory
+        set(.factory { factory() }, for: type)
     }
 
-    /// Registers a singleton instance
-    ///
-    /// All calls to `resolve(_:)` will return the same instance.
-    ///
-    /// - Parameters:
-    ///   - type: The type to register
-    ///   - instance: The singleton instance to store
-    ///
-    /// # Example
-    /// ```swift
-    /// let session = UserSession()
-    /// container.registerSingleton(UserSession.self, instance: session)
-    ///
-    /// let session1 = container.resolve(UserSession.self) // Same instance
-    /// let session2 = container.resolve(UserSession.self) // Same instance
-    /// // session1 === session2
-    /// ```
+    /// Registers an existing instance; every `resolve` returns it
     public func registerSingleton<T>(_ type: T.Type, instance: T) {
-        lock.lock()
-        defer { lock.unlock() }
-
-        let key = String(describing: type)
-        dependencies[key] = instance
+        set(.instance(instance), for: type)
     }
+
+    /// Registers a singleton that `factory` creates on the first `resolve`; later resolves reuse it
+    public func registerLazySingleton<T>(_ type: T.Type, factory: @escaping () -> T) {
+        set(.lazySingleton { factory() }, for: type)
+    }
+
     // MARK: - Resolution
 
-    /// Resolves a dependency
-    ///
-    /// Returns the registered dependency or crashes if not found.
-    ///
-    /// - Parameter type: The type to resolve
-    /// - Returns: Instance of the requested type
-    /// - Warning: Crashes with `fatalError` if the dependency is not registered
-    ///
-    /// # Example
-    /// ```swift
-    /// let apiService = container.resolve(APIService.self)
-    /// ```
-    ///
-    /// # Thread Safety
-    /// This method is thread-safe and can be called from multiple threads simultaneously.
+    /// Resolves `type`, crashing if it isn't registered
     public func resolve<T>(_ type: T.Type) -> T {
-        lock.lock()
-        defer { lock.unlock() }
-
-        let key = String(describing: type)
-
-        // Check if it's a singleton instance
-        if let instance = dependencies[key] as? T {
-            return instance
+        guard let value = resolveOptional(type) else {
+            fatalError("Dependency \(type) not registered. Did you forget to register it?")
         }
-
-        // Check if it's a factory
-        if let factory = dependencies[key] as? () -> T {
-            return factory()
-        }
-
-        fatalError("Dependency \(key) not registered. Did you forget to register it?")
+        return value
     }
 
-    /// Resolves an optional dependency
-    ///
-    /// Returns the registered dependency or `nil` if not found.
-    /// Useful when a dependency is optional or for graceful degradation.
-    ///
-    /// - Parameter type: The type to resolve
-    /// - Returns: Instance of the requested type, or `nil` if not registered
-    ///
-    /// # Example
-    /// ```swift
-    /// if let analytics = container.resolveOptional(Analytics.self) {
-    ///     analytics.track("event")
-    /// } else {
-    ///     print("Analytics not available")
-    /// }
-    /// ```
+    /// Resolves `type`, or returns `nil` if it isn't registered
     public func resolveOptional<T>(_ type: T.Type) -> T? {
-        lock.lock()
-        defer { lock.unlock() }
-
-        let key = String(describing: type)
-
-        // Check if it's a singleton instance
-        if let instance = dependencies[key] as? T {
-            return instance
+        var serviceToStart: Service?
+        let resolved: T? = lock.withLock {
+            let key = ObjectIdentifier(type)
+            switch entries[key] {
+            case .instance(let value):
+                return value as? T
+            case .factory(let make):
+                return make() as? T
+            case .lazySingleton(let make):
+                let value = make()
+                entries[key] = .instance(value)
+                if servicesStarted {
+                    serviceToStart = value as? Service
+                }
+                return value as? T
+            case nil:
+                return nil
+            }
         }
+        // Outside the lock, so a service's start() can take its time or resolve other dependencies
+        serviceToStart?.start()
+        return resolved
+    }
 
-        // Check if it's a factory
-        if let factory = dependencies[key] as? () -> T {
-            return factory()
+    /// Whether anything is registered for `type`, without resolving it
+    public func isRegistered<T>(_ type: T.Type) -> Bool {
+        lock.withLock { entries[ObjectIdentifier(type)] != nil }
+    }
+
+    // MARK: - Service Lifecycle
+
+    /// Calls `start()` on every registered singleton that conforms to `Service`, in
+    /// registration order. Lazy singletons aren't created by this; they're started
+    /// when first resolved. Factory registrations aren't started. Does nothing if already started.
+    public func startServices() {
+        let services: [Service] = lock.withLock {
+            guard !servicesStarted else { return [] }
+            servicesStarted = true
+            return singletonServices()
         }
+        services.forEach { $0.start() }
+    }
 
-        return nil
+    /// Calls `stop()` on every created singleton `Service`, in reverse registration order
+    public func stopServices() {
+        let services: [Service] = lock.withLock {
+            guard servicesStarted else { return [] }
+            servicesStarted = false
+            return singletonServices()
+        }
+        services.reversed().forEach { $0.stop() }
+    }
+
+    /// Created singleton services in registration order; an instance registered under several types appears once
+    private func singletonServices() -> [Service] {
+        var seen = Set<ObjectIdentifier>()
+        return registrationOrder.compactMap { key -> Service? in
+            guard case .instance(let value)? = entries[key], let service = value as? Service else { return nil }
+            if type(of: value) is AnyClass {
+                let identity = ObjectIdentifier(value as AnyObject)
+                guard seen.insert(identity).inserted else { return nil }
+            }
+            return service
+        }
     }
 
     // MARK: - Utilities
 
-    /// Clears all registered dependencies
-    ///
-    /// Primarily useful for testing to reset the container state between tests.
-    ///
-    /// # Example
-    /// ```swift
-    /// override func setUp() {
-    ///     super.setUp()
-    ///     DependencyContainer.shared.clear()
-    ///     // Register test dependencies
-    /// }
-    /// ```
-    ///
-    /// - Warning: Clearing dependencies in production code may cause crashes
-    ///   if components attempt to resolve dependencies afterwards
+    /// Removes every registration, e.g. between tests. Doesn't stop services; call `stopServices()` first.
     public func clear() {
-        lock.lock()
-        defer { lock.unlock() }
-
-        dependencies.removeAll()
-    }
-}
-
-// MARK: - Dependency Values
-
-/// Type-safe storage for dependency values using keys
-///
-/// `DependencyValues` provides a SwiftUI-like environment values pattern
-/// for dependency injection. Use `DependencyKey` protocol to define typed keys.
-///
-/// # Example
-/// ```swift
-/// // Define a key
-/// struct LoggerKey: DependencyKey {
-///     static var defaultValue: Logger { ConsoleLogger() }
-/// }
-///
-/// // Extend DependencyValues
-/// extension DependencyValues {
-///     var logger: Logger {
-///         get { self[LoggerKey.self] }
-///         set { self[LoggerKey.self] = newValue }
-///     }
-/// }
-///
-/// // Use it
-/// @MainActor
-/// func example() {
-///     DependencyValues.current.logger = FileLogger()
-///     let logger = DependencyValues.current.logger
-/// }
-/// ```
-public struct DependencyValues {
-
-    // MARK: - Storage
-
-    /// Internal storage for dependency values
-    private var storage: [String: Any] = [:]
-
-    // MARK: - Subscript
-
-    /// Type-safe subscript for accessing dependencies
-    ///
-    /// - Parameter key: The dependency key type
-    /// - Returns: The dependency value or the key's default value
-    public subscript<K: DependencyKey>(key: K.Type) -> K.Value {
-        get {
-            storage[String(describing: key)] as? K.Value ?? K.defaultValue
-        }
-        set {
-            storage[String(describing: key)] = newValue
+        lock.withLock {
+            entries.removeAll()
+            registrationOrder.removeAll()
+            servicesStarted = false
         }
     }
-}
 
-// MARK: - Dependency Accessor
-
-/// Private storage for the current dependency values
-private struct DependencyValuesKey {
-    /// Current dependency values (main actor isolated)
-    @MainActor static var current = DependencyValues()
-}
-
-// MARK: - Current Dependency Values
-
-public extension DependencyValues {
-    /// Access the current dependency values
-    ///
-    /// - Note: Main actor isolated for thread safety
-    ///
-    /// # Example
-    /// ```swift
-    /// @MainActor
-    /// func setupDependencies() {
-    ///     DependencyValues.current.logger = FileLogger()
-    ///     DependencyValues.current.apiClient = ProductionAPIClient()
-    /// }
-    /// ```
-    @MainActor static var current: DependencyValues {
-        get { DependencyValuesKey.current }
-        set { DependencyValuesKey.current = newValue }
+    private func set<T>(_ entry: Entry, for type: T.Type) {
+        lock.withLock {
+            let key = ObjectIdentifier(type)
+            if entries[key] == nil {
+                registrationOrder.append(key)
+            }
+            entries[key] = entry
+        }
     }
 }

@@ -2,8 +2,7 @@
 //  Connection.swift
 //  RWLabsArchitecture
 //
-//  Fluent API for managing state-mapped child ViewModels
-//  Clean syntax: Connection<To> { output }.connect(state: \.destination, case: \.myCase)
+//  Wires a child ViewModel to state stored in its parent
 //
 
 import SwiftUI
@@ -11,568 +10,438 @@ import Combine
 import CasePaths
 import ObjectiveC
 
-// MARK: - Connection Retention
-
-/// `connect(from:to:)` returns the bare child ViewModel (not the `Connection` wrapper),
-/// so nothing keeps the `Connection` — and therefore its `outputCancellable` — alive.
-/// Without this, the `Connection` is deallocated the instant `connect` returns, which
-/// cancels the Combine subscription and silently drops the output handler before it can
-/// ever fire. Tying the `Connection`'s lifetime to the child it produced keeps the
-/// subscription alive for exactly as long as the child ViewModel is retained.
-@MainActor
-private var connectionRetentionKey: UInt8 = 0
-
-// MARK: - AnyConnection Protocol
-
+/// Implemented by connections that `ViewModelConnections` hands its parent to
 protocol AnyConnection: AnyObject {
     func _setupParent(_ parent: any ViewModel)
 }
 
+@MainActor
+private var directLinkKey: UInt8 = 0
+
 // MARK: - Connection
 
-/// Manages a child ViewModel stored in parent state with output handling
+/// Builds a connection from a parent ViewModel to a child, optionally handling the child's outputs.
 ///
-/// # Usage
+/// Two ways to connect:
+///
 /// ```swift
-/// class Connections: BaseConnections<ParentViewModel> {
-///     lazy var entry = Connection<EntryViewModel> { [weak parent] output in
-///         guard let parent = parent else { return }
-///         switch output {
-///         case .entryUpdated(let entry):
-///             parent.handleEntryUpdate(entry)
-///         }
-///     }
-///     .connect(state: \.destination, case: \.entry)
-///     .factory { EntryViewModel(initialState: .init()) }
-/// }
+/// // The child's state is always present on the parent (tabs, embedded panels)
+/// lazy var home: HomeModel = Connection<HomeModel> { [weak parent] output in … }
+///     .connect(from: parent!, to: \.home)
 ///
-/// // Transparent access
-/// model.connections.entry.send(.update)
-/// model.connections.entry.state.title
+/// // The child's state is one case of the parent's destination enum (sheets, pushes)
+/// lazy var editor = Connection<EditorModel> { [weak parent] output in … }
+///     .connect(state: \.destination, case: \.editor, parent: parent)
 /// ```
+///
+/// Either way the child's state stays in sync with the parent's, in both directions.
 @MainActor
 @dynamicMemberLookup
 public final class Connection<To: ViewModel>: @MainActor AnyConnection {
-
-    // MARK: - Properties
-
     private let outputHandler: ((To.Output) -> Void)?
-    private var factoryClosure: (() -> To)?
-
-    private weak var parentViewModel: (any ViewModel)?
     private var cachedViewModel: To? {
         didSet {
-            if cachedViewModel == nil {
-                self.isActive = false
-                self.clearData()
-            }
+            if cachedViewModel == nil { onClear() }
         }
     }
-
-    // Observation
-    private var stateCancellable: AnyCancellable?
-    private var childStateCancellable: AnyCancellable?
     private var outputCancellable: AnyCancellable?
-    private var isActive = false
-    var clearData: () -> Void = {}
 
-    // MARK: - Initialization
+    /// Called when the cached child is cleared; `CaseConnection` uses it to clear the parent's destination
+    var onClear: () -> Void = {}
 
-    /// Creates a Connection with output handler
+    /// A connection whose child's outputs go to `outputHandler`
     public init(outputHandler: @escaping (To.Output) -> Void) {
         self.outputHandler = outputHandler
     }
 
-    /// Creates a Connection without output handler
+    /// A connection that ignores the child's outputs
     public init() {
         self.outputHandler = nil
     }
 
-    // MARK: - Fluent API
+    // MARK: Connecting
 
-    /// Sets a custom factory for ViewModel creation
-    ///
-    /// ```swift
-    /// .factory { EntryViewModel(initialState: .init()) }
-    /// ```
-    public func factory(_ factory: @escaping () -> To) -> Self {
-        self.factoryClosure = factory
-        return self
-    }
-
-    /// Connects to a case within parent's state destination enum
-    ///
-    /// ```swift
-    /// .connect(state: \.destination, case: \.entry)
-    /// ```
+    /// Connects to one case of the parent's `@CasePathable` destination enum (or any optional
+    /// enum on its state). The child exists while that case is set, built from the case's payload.
     public func connect<From: ViewModel, Case: CasePathable>(
         state stateKeyPath: WritableKeyPath<From.State, Case?>,
-        case casePath: CaseKeyPath<Case, To.State>, parent: From?
-    ) -> CaseConnection<From,To,Case> {
-        return CaseConnection(
-            connection: self,
-            stateKeyPath: stateKeyPath,
-            casePath: casePath,
-            parent: parent
+        case casePath: CaseKeyPath<Case, To.State>,
+        parent: From?
+    ) -> CaseConnection<From, To, Case> {
+        CaseConnection(connection: self, stateKeyPath: stateKeyPath, casePath: casePath, parent: parent)
+    }
+
+    /// Connects to an optional child state on the parent. The child exists while the value is
+    /// non-`nil`, built from it; setting it to `nil` drops the child.
+    ///
+    /// ```swift
+    /// var filter: FilterModel.State?          // parent state
+    /// lazy var filter = Connection<FilterModel>().connect(state: \.filter, parent: parent)
+    /// ```
+    public func connect<From: ViewModel>(
+        state keyPath: WritableKeyPath<From.State, To.State?>,
+        parent: From?
+    ) -> CaseConnection<From, To, To.State?> {
+        CaseConnection(connection: self, optional: keyPath, parent: parent)
+    }
+
+    /// Connects to a child state that's always present on the parent, and returns the child.
+    ///
+    /// The child is built from `parent.state[keyPath: keyPath]`. Its state changes are copied
+    /// into the parent, and the parent's changes to that state are copied into the child.
+    public func connect<From: ViewModel>(from parent: From, to keyPath: WritableKeyPath<From.State, To.State>) -> To {
+        let child = To(initialState: parent.state[keyPath: keyPath])
+        let link = DirectLink(parent: parent, child: child, keyPath: keyPath, outputHandler: outputHandler)
+        // The child is all the caller keeps, so it owns the link that syncs it
+        objc_setAssociatedObject(child, &directLinkKey, link, .OBJC_ASSOCIATION_RETAIN)
+        return child
+    }
+
+    // MARK: Child
+
+    /// The cached child, if one has been created
+    public var model: To? {
+        get { cachedViewModel }
+        set { cachedViewModel = newValue }
+    }
+
+    /// A binding to `model`
+    public var bindingModel: Binding<To?> {
+        Binding(
+            get: { [weak self] in self?.model },
+            set: { [weak self] in self?.model = $0 }
         )
     }
-    
-    public func connect<From:ViewModel>(from parent: From,
-                                        to keyPath: WritableKeyPath<From.State, To.State>
-    ) -> To {
-        self.parentViewModel = parent
-        let state = parent.state[keyPath: keyPath]
-        let model = activateConnection(from: parent, to: state, keyPath: keyPath)
-        objc_setAssociatedObject(model, &connectionRetentionKey, self, .OBJC_ASSOCIATION_RETAIN)
-        return model
-    }
-    
-    private func activateConnection<From:ViewModel>(from parent: From, to childState: To.State, keyPath: WritableKeyPath<From.State, To.State>) -> To {
-        isActive = true
 
-        // Create or get the ViewModel
-        let model = createOrGetViewModel(with: childState)
-
-        // Set the state
-        model.state = childState
-        
-        // Observe child state changes
-        observeChildStateChanges(from: parent, to: model, keyPath: keyPath)
-        
-        return model
-    }
-    
-    
-    private func observeChildStateChanges<From:ViewModel>(from parent: From, to model: To, keyPath: WritableKeyPath<From.State, To.State>) {
-        // Observe child ViewModel state changes and sync back to parent
-        // We need to observe objectWillChange since we can't access $state on the protocol
-        // But we'll handle it synchronously by checking state immediately in the handler
-        childStateCancellable = model.objectWillChange
-            .sink { [weak self] _ in
-                // Use DispatchQueue.main.async to ensure state has actually changed
-                DispatchQueue.main.async {
-                    self?.syncChildStateToParent(from: parent, stateKeyPath: keyPath)
-                }
-            }
-    }
-
-    private func syncChildStateToParent<From: ViewModel>(from parent: From, stateKeyPath: WritableKeyPath<From.State, To.State>) {
-        guard let model = model else {
-            return
-        }
-
-        let newChildState = model.state
-
-        // Use generic helper to properly update parent state
-        updateParentState(parent, childState: newChildState, stateKeyPath: stateKeyPath)
-    }
-
-    private func updateParentState<From: ViewModel>(_ parent: From, childState: To.State, stateKeyPath: WritableKeyPath<From.State, To.State>) {
-        guard var parentState = parent.state as? From.State else { return }
-
-        // Get current destination
-        var destination = parentState[keyPath: stateKeyPath]
-
-        // Update the case with new state
-        do {
-
-            // Update parent state
-            parentState[keyPath: stateKeyPath] = destination
-
-            // Update using the proper typed method
-            parent.updateState { state in
-                if var typedState = state as? From.State {
-                    typedState[keyPath: stateKeyPath] = destination
-                    state = typedState as! From.State
-                }
-            }
-        } catch {
-            // Case path doesn't match current enum case - this is normal
-        }
-    }
-  
-    // MARK: - ViewModel Access
-
-    
-    public var bindingModel: Binding<To?> {
-        .init {
-            self.model
-        } set: { [weak self] model in
-            guard let self = self else { return }
-            self.model = model
-        }
-    }
-    /// The child ViewModel instance (if active)
-    public var model: To? {
-        get {
-            return cachedViewModel
-        } set {
-            cachedViewModel = newValue
-        }
-    }
-
-    // MARK: - Lifecycle
-
-    /// Clears the cached ViewModel
+    /// Drops the cached child and stops listening to its outputs
     public func clear() {
         cachedViewModel = nil
-        isActive = false
-        childStateCancellable?.cancel()
         outputCancellable?.cancel()
+        outputCancellable = nil
     }
 
-    // MARK: - Dynamic Member Lookup
-
-    /// Transparent access to ViewModel members
+    /// Reads a member of the child: `connection.title` for `connection.model?.title`
     public subscript<T>(dynamicMember keyPath: KeyPath<To, T>) -> T? {
         model?[keyPath: keyPath]
     }
 
-    // MARK: - Internal
+    func _setupParent(_ parent: any ViewModel) {}
 
-    func _setupParent(_ parent: any ViewModel) {
-        self.parentViewModel = parent
+    /// The cached child, or a new one built from `childState` with the output handler attached
+    func createOrGetViewModel(with childState: To.State) -> To {
+        if let cachedViewModel { return cachedViewModel }
+        let child = To(initialState: childState)
+        cachedViewModel = child
+        if let outputHandler {
+            outputCancellable = child.outputs.sink(receiveValue: outputHandler)
+        }
+        return child
     }
+}
 
-    fileprivate func createOrGetViewModel(with childState: To.State) -> To {
-        if let cached = cachedViewModel {
-            return cached
+// MARK: - DirectLink
+
+/// Keeps a directly connected child and its parent's state in sync, and delivers the child's
+/// outputs. Owned by the child; holds both models weakly, so neither is kept alive by it.
+@MainActor
+private final class DirectLink<From: ViewModel, To: ViewModel> {
+    private weak var parent: From?
+    private weak var child: To?
+    private let keyPath: WritableKeyPath<From.State, To.State>
+    private var cancellables = Set<AnyCancellable>()
+
+    // Each push fires the other side's objectWillChange synchronously; these flags ignore that echo
+    private var isPushingToChild = false
+    private var isPushingToParent = false
+    /// A child change is waiting to be copied to the parent; don't overwrite the child until it has been
+    private var childSyncPending = false
+
+    init(parent: From, child: To, keyPath: WritableKeyPath<From.State, To.State>, outputHandler: ((To.Output) -> Void)?) {
+        self.parent = parent
+        self.child = child
+        self.keyPath = keyPath
+
+        if let outputHandler {
+            child.outputs.sink(receiveValue: outputHandler).store(in: &cancellables)
         }
 
-        let vm = createViewModel(with: childState)
-        cachedViewModel = vm
+        child.objectWillChange
+            .sink { [weak self] _ in
+                guard let self, !self.isPushingToChild else { return }
+                self.childSyncPending = true
+                // objectWillChange fires before the value changes; read it on the next turn
+                DispatchQueue.main.async { [weak self] in self?.pushChildToParent() }
+            }
+            .store(in: &cancellables)
 
-        // Bind output handler if provided
-        if let outputHandler = outputHandler {
-            outputCancellable = vm.outputs.sink(receiveValue: outputHandler)
-        }
-
-        return vm
+        parent.objectWillChange
+            .sink { [weak self] _ in
+                guard let self, !self.isPushingToParent else { return }
+                DispatchQueue.main.async { [weak self] in self?.pushParentToChild() }
+            }
+            .store(in: &cancellables)
     }
 
-    private func createViewModel(with childState: To.State) -> To {
-        return .init(initialState: childState)
+    private func pushChildToParent() {
+        childSyncPending = false
+        guard let parent, let child else { return }
+        isPushingToParent = true
+        parent.state[keyPath: keyPath] = child.state
+        isPushingToParent = false
+    }
+
+    private func pushParentToChild() {
+        guard !childSyncPending, let parent, let child else { return }
+        isPushingToChild = true
+        child.state = parent.state[keyPath: keyPath]
+        isPushingToChild = false
     }
 }
 
 // MARK: - CaseConnection
 
-/// Manages a child ViewModel whose state is stored in an enum case within parent state
+/// A child whose state is held optionally by its parent: one case of an optional enum on the
+/// parent's state (usually `destination`), or a plain optional child state.
 ///
-/// This connection type:
-/// 1. Observes changes to parent's state destination enum
-/// 2. Extracts child state when the case matches
-/// 3. Creates/updates child ViewModel with extracted state
-/// 4. Syncs child state changes back to parent
-/// 5. Handles output callbacks
+/// While the parent holds the child's state, the child exists: it's built from that state, and
+/// the two stay in sync in both directions. When the parent's value becomes `nil` (or another
+/// case), the child is dropped. Setting `bindingModel` to `nil` (a dismissed sheet, a pop)
+/// clears the parent's value.
 ///
-/// # Usage
-/// ```swift
-/// // In Parent State
-/// struct State: ViewModelState {
-///     var destination: Destination?
-/// }
-///
-/// enum Destination: CasePathable {
-///     case entry(EntryViewModel.State)
-///     case settings(SettingsViewModel.State)
-/// }
-///
-/// // In Connections
-/// lazy var entry = Connection<EntryViewModel> { [weak parent] output in
-///     switch output {
-///     case .updated(let data):
-///         parent?.handleUpdate(data)
-///     }
-/// }
-/// .connect(state: \.destination, case: \.entry)
-/// .factory { EntryViewModel(initialState: .init()) }
-/// ```
+/// Created with `Connection.connect(state:case:parent:)` or `Connection.connect(state:parent:)`.
 @MainActor
 @dynamicMemberLookup
-public final class CaseConnection<From: ViewModel, To: ViewModel, Case: CasePathable>: @MainActor AnyConnection {
-
-    // MARK: - Properties
-
+public final class CaseConnection<From: ViewModel, To: ViewModel, Case>: @MainActor AnyConnection {
     let connection: Connection<To>
-    private let stateKeyPath: WritableKeyPath<From.State, Case?>
-    private let casePath: CaseKeyPath<Case, To.State>
-
+    /// The child's state in the parent's state, if the parent currently holds it
+    private let readPayload: (From.State) -> To.State?
+    /// Writes the child's state into the parent's state; `false` if the parent no longer holds it
+    private let writePayload: (inout From.State, To.State) -> Bool
+    /// Sets the parent's value to `nil`; `false` (and no change) if it doesn't hold this child's state
+    private let clearPayload: (inout From.State) -> Bool
     private weak var parentViewModel: (any ViewModel)?
     private var stateCancellable: AnyCancellable?
     private var childStateCancellable: AnyCancellable?
     private var isActive = false
 
-    // MARK: - ViewModel Access
+    // Each push fires the other side's objectWillChange synchronously; these flags ignore that echo
+    private var isPushingToChild = false
+    private var isPushingToParent = false
+    /// A child change is waiting to be copied to the parent; don't overwrite the child until it has been
+    private var childSyncPending = false
 
-    
-    public var bindingModel: Binding<To?>!
-    // MARK: - Initialization
-
+    /// One case of an optional enum
     init(
         connection: Connection<To>,
         stateKeyPath: WritableKeyPath<From.State, Case?>,
         casePath: CaseKeyPath<Case, To.State>,
         parent: From?
-    ) {
+    ) where Case: CasePathable {
         self.connection = connection
-        self.stateKeyPath = stateKeyPath
-        self.casePath = casePath
-        if let parent {
-            self._setupParent(parent)
+        readPayload = { state in
+            state[keyPath: stateKeyPath].flatMap { AnyCasePath(casePath).extract(from: $0) }
         }
-        self.bindingModel = .init {
-                self.model
-            } set: { [weak self] model in
-                guard let self = self else { return }
-                if model == nil {
-                    // User navigated back - clear the parent's destination
-                    self.clearParentDestination()
-                }
-                self.model = model
+        writePayload = { state, childState in
+            guard var value = state[keyPath: stateKeyPath],
+                  (try? AnyCasePath(casePath).modify(&value, { $0 = childState })) != nil else {
+                return false
             }
-        self.connection.clearData = {
-            self.clearParentDestination()
+            state[keyPath: stateKeyPath] = value
+            return true
+        }
+        clearPayload = { state in
+            guard let value = state[keyPath: stateKeyPath],
+                  AnyCasePath(casePath).extract(from: value) != nil else {
+                return false
+            }
+            state[keyPath: stateKeyPath] = nil
+            return true
+        }
+        connection.onClear = { [weak self] in self?.clearParentDestination() }
+        if let parent {
+            _setupParent(parent)
         }
     }
 
-    // MARK: - Fluent API
-
-    /// Sets a custom factory for ViewModel creation
-    public func factory(_ factory: @escaping () -> To) -> Self {
-        _ = connection.factory(factory)
-        return self
+    /// A plain optional child state
+    init(
+        connection: Connection<To>,
+        optional keyPath: WritableKeyPath<From.State, To.State?>,
+        parent: From?
+    ) where Case == To.State? {
+        self.connection = connection
+        readPayload = { $0[keyPath: keyPath] }
+        writePayload = { state, childState in
+            guard state[keyPath: keyPath] != nil else { return false }
+            state[keyPath: keyPath] = childState
+            return true
+        }
+        clearPayload = { state in
+            guard state[keyPath: keyPath] != nil else { return false }
+            state[keyPath: keyPath] = nil
+            return true
+        }
+        connection.onClear = { [weak self] in self?.clearParentDestination() }
+        if let parent {
+            _setupParent(parent)
+        }
     }
 
-    // MARK: - ViewModel Access
+    // MARK: Child
 
-    /// The child ViewModel instance (if destination case is active)
+    /// The child while the parent holds its state, otherwise `nil`.
+    ///
+    /// Always reflects the parent's state at the moment it's read, so a SwiftUI re-render
+    /// straight after the state changes sees the right answer without waiting for the
+    /// connection's main-queue observer.
     public var model: To? {
         get {
-            // First check if we need to sync from parent state immediately
-            syncFromParentIfNeeded()
-
-            guard isActive else { return nil }
-            return connection.model
-        } set {
+            syncWithParentNow()
+            return isActive ? connection.model : nil
+        }
+        set {
             connection.model = newValue
         }
     }
 
-    /// Immediately syncs from parent state if destination is set but connection is not active
-    private func syncFromParentIfNeeded() {
-        guard !isActive,
-              let parent = parentViewModel,
-              let parentState = parent.state as? From.State else {
-            return
-        }
-
-        let destination = parentState[keyPath: stateKeyPath]
-        let childState = destination.flatMap { AnyCasePath(self.casePath).extract(from: $0) }
-
-        if let childState = childState {
-            print("🔧 CaseConnection: Syncing immediately on model access")
-            activateConnection(with: childState)
-        }
+    /// For `.sheet(item:)` / `.navigationDestination(item:)`; setting `nil` clears the parent's value
+    public var bindingModel: Binding<To?> {
+        Binding(
+            get: { [weak self] in self?.model },
+            set: { [weak self] newValue in
+                guard let self else { return }
+                if newValue == nil {
+                    clearParentDestination()
+                }
+                model = newValue
+            }
+        )
     }
 
-    // MARK: - Dynamic Member Lookup
-
+    /// Reads a member of the child: `connection.title` for `connection.model?.title`
     public subscript<T>(dynamicMember keyPath: KeyPath<To, T>) -> T? {
         model?[keyPath: keyPath]
     }
 
-    // MARK: - AnyConnection
+    // MARK: Parent
 
     func _setupParent(_ parent: any ViewModel) {
         guard let typedParent = parent as? From else {
-            print("⚠️ CaseConnection: Parent type mismatch")
+            Log.w("CaseConnection: expected a parent of type \(From.self), got \(type(of: parent))")
             return
         }
-
-        self.parentViewModel = typedParent
-        self.connection._setupParent(typedParent)
-
-        // Set up observation using generic helper to capture concrete type
-        setupObservation(for: typedParent)
+        parentViewModel = typedParent
+        observe(typedParent)
     }
 
-    // MARK: - State Observation
-
-    private func setupObservation<P: ViewModel>(for parent: P) {
-        // Observe objectWillChange but handle it after the state changes
+    private func observe<P: ViewModel>(_ parent: P) {
         stateCancellable = parent.objectWillChange
             .sink { [weak self] _ in
-                // State changes happen synchronously, we just need to handle them after
-                // the current run loop iteration completes
-                DispatchQueue.main.async {
-                    self?.handleParentStateChange()
-                }
+                // Ignore the echo of our own child → parent push
+                guard let self, !self.isPushingToParent else { return }
+                // objectWillChange fires before the value changes; read it on the next turn
+                DispatchQueue.main.async { [weak self] in self?.handleParentStateChange() }
             }
-
-        // Check initial state immediately
         handleParentStateChange()
     }
 
+    /// Activates or deactivates straight away to match the parent's current state
+    private func syncWithParentNow() {
+        if let childState = currentPayload() {
+            if !isActive { activate(with: childState) }
+        } else if isActive {
+            deactivate()
+        }
+    }
+
     private func handleParentStateChange() {
-        guard let parent = parentViewModel,
-              let parentState = parent.state as? From.State else {
-            print("⚠️ CaseConnection: Parent or state not available")
-            return
-        }
-
-        // Get destination from parent state
-        let destination = parentState[keyPath: stateKeyPath]
-
-        // Extract child state using case path
-        let childState = destination.flatMap { AnyCasePath(self.casePath).extract(from: $0) }
-
-        if let childState = childState {
-            // Case is active - activate or update connection
-            if !self.isActive {
-                print("✅ CaseConnection: Activating connection")
-                self.activateConnection(with: childState)
-            } else {
-                print("🔄 CaseConnection: Syncing state to existing connection")
-                self.syncStateToViewModel(childState)
-            }
-
-        } else {
-            // Case is inactive - deactivate connection
+        if let childState = currentPayload() {
             if isActive {
-                if destination == nil {
-                    print("❌ CaseConnection: Deactivating connection")
-                    deactivateConnection()
-                }
+                pushToChild(childState)
+            } else {
+                activate(with: childState)
             }
+        } else if isActive {
+            deactivate()
         }
     }
 
-    private func activateConnection(with childState: To.State) {
-        isActive = true
-
-        // Create or get the ViewModel
-        let model = connection.createOrGetViewModel(with: childState)
-
-        // Set the state
-        model.state = childState
-        
-        // Observe child state changes
-        observeChildStateChanges(model)
+    /// The child's state in the parent's current state, if the parent holds it
+    private func currentPayload() -> To.State? {
+        guard let parentState = parentViewModel?.state as? From.State else { return nil }
+        return readPayload(parentState)
     }
 
-    private func deactivateConnection() {
+    // MARK: Lifecycle
+
+    private func activate(with childState: To.State) {
+        isActive = true
+        let child = connection.createOrGetViewModel(with: childState)
+        child.state = childState
+        childStateCancellable = child.objectWillChange
+            .sink { [weak self] _ in
+                // Ignore the echo of our own parent → child push
+                guard let self, !self.isPushingToChild else { return }
+                self.childSyncPending = true
+                // objectWillChange fires before the value changes; read it on the next turn
+                DispatchQueue.main.async { [weak self] in self?.pushToParent() }
+            }
+    }
+
+    private func deactivate() {
         isActive = false
         childStateCancellable?.cancel()
-        // Clear the connection's model to trigger sheet dismissal
         connection.clear()
     }
 
-    private func syncStateToViewModel(_ newState: To.State) {
-        guard let model = connection.model else { return }
-        guard model.state != newState else { return }
-        guard newState.destination != nil else { return }
-        // Only update if state is different to avoid cycles
-        // Simple approach: always update (ViewModel can optimize internally)
-        model.state = newState
+    // MARK: Syncing
+
+    private func pushToChild(_ childState: To.State) {
+        // The child has a newer change on its way to the parent; pushing now would overwrite it
+        guard !childSyncPending, let child = connection.model else { return }
+        isPushingToChild = true
+        child.state = childState
+        isPushingToChild = false
     }
 
-    private func observeChildStateChanges(_ model: To) {
-        // Observe child ViewModel state changes and sync back to parent
-        // We need to observe objectWillChange since we can't access $state on the protocol
-        // But we'll handle it synchronously by checking state immediately in the handler
-        childStateCancellable = model.objectWillChange
-            .sink { [weak self] _ in
-                // Use DispatchQueue.main.async to ensure state has actually changed
-                DispatchQueue.main.async {
-                    self?.syncChildStateToParent()
-                }
-            }
+    private func pushToParent() {
+        childSyncPending = false
+        guard let child = connection.model, let parent = parentViewModel else { return }
+        pushPayload(child.state, to: parent)
     }
 
-    private func syncChildStateToParent() {
-        guard let model = connection.model,
-              let parent = parentViewModel else {
+    private func pushPayload<P: ViewModel>(_ childState: To.State, to parent: P) {
+        guard var parentState = parent.state as? From.State,
+              writePayload(&parentState, childState) else {
             return
         }
-
-        let newChildState = model.state
-
-        // Use generic helper to properly update parent state
-        updateParentState(parent, childState: newChildState)
+        isPushingToParent = true
+        parent.state = parentState as! P.State
+        isPushingToParent = false
     }
 
-    private func updateParentState<P: ViewModel>(_ parent: P, childState: To.State) {
-        guard var parentState = parent.state as? From.State else { return }
-
-        // Get current destination
-        guard var destination = parentState[keyPath: stateKeyPath] else {
-            return
-        }
-
-        // Update the case with new state
-        do {
-            try _ = AnyCasePath(casePath).modify(&destination) { _ in childState }
-
-            // Update parent state
-            parentState[keyPath: stateKeyPath] = destination
-
-            // Update using the proper typed method
-            parent.updateState { state in
-                if var typedState = state as? From.State {
-                    typedState[keyPath: stateKeyPath] = destination
-                    state = typedState as! P.State
-                }
-            }
-        } catch {
-            // Case path doesn't match current enum case - this is normal
-        }
-    }
-
-    /// Clears the parent's destination (sets it to nil)
-    /// Called when SwiftUI's navigationDestination binding is set to nil on back navigation
+    /// Clears the parent's value, but only if it still holds this child's state
     private func clearParentDestination() {
         guard let parent = parentViewModel else { return }
-
-        // Use generic helper to properly update parent state
-        clearParentDestinationState(parent)
+        clearValue(of: parent)
     }
 
-    private func clearParentDestinationState<P: ViewModel>(_ parent: P) {
-        guard var parentState = parent.state as? From.State else { return }
-
-        // Set destination to nil
-        parentState[keyPath: stateKeyPath] = nil
-
-        // Update using the proper typed method
-        parent.updateState { state in
-            if var typedState = state as? From.State {
-                typedState[keyPath: stateKeyPath] = nil
-                state = typedState as! P.State
-            }
+    private func clearValue<P: ViewModel>(of parent: P) {
+        guard var parentState = parent.state as? From.State,
+              clearPayload(&parentState) else {
+            return
         }
+        parent.state = parentState as! P.State
     }
 }
 
-// MARK: - Helper Extensions
+// MARK: - Deep Links
 
-extension StateComponent {
-    /// Updates state using a closure
-    public func updateState(_ update: (inout State) -> Void) {
-        var newState = state
-        update(&newState)
-        state = newState
+extension CaseConnection: DeepLinkChildProviding {
+    /// Processes the parent's current value now rather than on the next main-queue turn,
+    /// so a deep link can continue into the child straight after setting the destination.
+    func deepLinkChild() -> (any ViewModel)? {
+        handleParentStateChange()
+        return isActive ? connection.model : nil
     }
-}
-
-public enum Async: AsyncService {
-   public static func main(_ block: @escaping () -> Void) { DispatchQueue.main.async(execute: block) }
-   public static func background(qos: DispatchQoS.QoSClass = .default, _ block: @escaping () -> Void) { DispatchQueue.global(qos: qos).async(execute: block) }
-   public static func after(_ delay: TimeInterval, _ block: @escaping () -> Void) { DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: block) }
-}
-
-protocol AsyncService {
-    static func main(_ block: @escaping @Sendable () -> Void)
-    static func background(qos: DispatchQoS.QoSClass, _ block: @escaping () -> Void)
-    static func after(_ delay: TimeInterval, _ block: @escaping () -> Void)
 }
