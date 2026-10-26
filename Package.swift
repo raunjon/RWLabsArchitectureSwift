@@ -18,7 +18,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(url:"https://github.com/pointfreeco/swift-case-paths.git", branch: "main"),
+        .package(url: "https://github.com/pointfreeco/swift-case-paths.git", from: "1.10.0"),
         .package(url: "https://github.com/swiftlang/swift-syntax", "509.0.0"..<"700.0.0")
     ],
     targets: [
