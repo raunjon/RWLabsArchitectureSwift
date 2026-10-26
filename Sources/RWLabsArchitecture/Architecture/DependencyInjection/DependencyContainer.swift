@@ -164,3 +164,15 @@ public final class DependencyContainer: @unchecked Sendable {
         }
     }
 }
+
+/// A type the container can build with no arguments, so `registerRepository` can create it
+public protocol Repository {
+    init()
+}
+
+public extension DependencyContainer {
+    /// Registers one new instance of `type` as a singleton
+    func registerRepository<T: Repository>(_ type: T.Type) {
+        registerSingleton(type, instance: type.init())
+    }
+}
