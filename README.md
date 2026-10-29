@@ -39,7 +39,7 @@ Every screen is a **model** (what the screen knows and does) plus a **view** (ho
 |---|---|
 | Platform | iOS 17+ |
 | Swift tools | 6.2 |
-| Dependencies | [swift-case-paths](https://github.com/pointfreeco/swift-case-paths) and [swift-syntax](https://github.com/swiftlang/swift-syntax) (for the macros) |
+| Dependencies | [swift-case-paths](https://github.com/pointfreeco/swift-case-paths) and [swift-syntax](https://github.com/swiftlang/swift-syntax) (for the macros), and [RWLabsFoundation](https://github.com/raunjon/RWLabsFoundation), which is re-exported, so `import RWLabsArchitecture` also brings in its Optional, Binding and Async helpers |
 
 Add the package in Xcode (**File ▸ Add Package Dependencies…**) or in `Package.swift`:
 
@@ -635,8 +635,7 @@ Sources/RWLabsArchitecture/Architecture/
 │   └── Connections/       Connection, CaseConnection, ViewModelConnections
 ├── DependencyInjection/   DependencyContainer
 ├── PropertyWrappers/      @Injected…, @Preference, @StoredObject, state wrappers
-├── Services/              Logger, Validation, Analytics
-└── Extensions/            Optional, Binding and Async helpers
+└── Services/              Logger, Validation, Analytics
 Sources/RWLabsArchitectureMacros/   @Component, @DeepLinkable, @DeepLink
 Tests/RWLabsArchitectureTests/      XCTest suite (iOS Simulator)
 ```

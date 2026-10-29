@@ -8,7 +8,7 @@ let package = Package(
     name: "RWLabsArchitecture",
     platforms: [
            .iOS(.v17),
-           .macOS(.v10_15)
+           .macOS(.v12)
        ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
@@ -19,7 +19,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/pointfreeco/swift-case-paths.git", from: "1.10.0"),
-        .package(url: "https://github.com/swiftlang/swift-syntax", "509.0.0"..<"700.0.0")
+        .package(url: "https://github.com/swiftlang/swift-syntax", "509.0.0"..<"700.0.0"),
+        .package(url: "https://github.com/raunjon/RWLabsFoundation.git", from: "1.0.0"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -36,7 +37,8 @@ let package = Package(
             name: "RWLabsArchitecture",
             dependencies: [
                 "RWLabsArchitectureMacros",
-                .product(name: "CasePaths", package: "swift-case-paths") // 🔥 REQUIRED
+                .product(name: "CasePaths", package: "swift-case-paths"), // 🔥 REQUIRED
+                .product(name: "RWLabsFoundation", package: "RWLabsFoundation")
             ]
         ),
         .testTarget(

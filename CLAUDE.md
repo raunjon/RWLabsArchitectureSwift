@@ -12,9 +12,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - App-level flows (login / onboarding / main, tab bars) expressed as ordinary ViewModels. There is no separate flow system.
 - A dependency injection container plus property wrappers
 
-It is consumed as a local package (`.package(path: "../RWLabsArchitecture")`) by app targets; it is not an app itself. Platforms in `Package.swift`: iOS 17, macOS 10.15 (swift-tools 6.2).
+It is consumed as a local package (`.package(path: "../RWLabsArchitecture")`) by app targets; it is not an app itself. Platforms in `Package.swift`: iOS 17, macOS 12 (swift-tools 6.2).
 
-Dependencies: `swift-case-paths` (tracking `main`), used for `@CasePathable` destination enums, and `swift-syntax` (`509.0.0..<700.0.0`), used by the macro target.
+Dependencies: `swift-case-paths` (tracking `main`), used for `@CasePathable` destination enums, `swift-syntax` (`509.0.0..<700.0.0`), used by the macro target, and `RWLabsFoundation` (`from: "1.0.0"`), which provides the Optional, Binding and Async helpers. The module `@_exported import`s `RWLabsFoundation`, so apps get those helpers with `import RWLabsArchitecture`.
 
 ## Default building blocks
 
@@ -50,7 +50,7 @@ There is a small test target, `Tests/RWLabsArchitectureTests` (XCTest). Run it o
 xcodebuild test -scheme RWLabsArchitecture -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -skipMacroValidation
 ```
 
-It currently covers `CaseConnection`'s two-way state sync, `DependencyContainer`, the `@Injected` wrappers, the service lifecycle (`AppCoordinator` + `startServices`/`stopServices`), the logger, validation, the `Extensions/` helpers, `Route`, deep links, the presentation helpers, and the storage and state wrappers. Tests that create a `BaseViewModel` must register an `ErrorService` in `setUp`.
+It currently covers `CaseConnection`'s two-way state sync, `DependencyContainer`, the `@Injected` wrappers, the service lifecycle (`AppCoordinator` + `startServices`/`stopServices`), the logger, validation, the Foundation helpers it re-exports, `Route`, deep links, the presentation helpers, and the storage and state wrappers. Tests that create a `BaseViewModel` must register an `ErrorService` in `setUp`.
 
 ## Source layout
 
@@ -116,7 +116,7 @@ Ready-made service protocols and implementations. Apps register the ones they us
 
 - **`Destination.swift`** (formerly `NavigationCore.swift`) — `ViewModelDestination` (`Hashable & Identifiable`; `id: String` defaults to the enum case name via `Mirror`, e.g. `"detail"` for `.detail(state)`, and `==`/`hash` use it), `RouteDestinationPresentable` (adds `presentationStyle`), and `PresentationStyle` (`push`, `modal`, `fullScreen`, `customAlert`, `alert`). `AnyDestination`, `NavigationCommand`, `NavigationState`, `metadata`, and the `.replace`/`.popToRoot` styles were removed.
 - **`StackNavigation.swift`** — `ParentLink`, the internal `NavigableModel` protocol, and `BaseViewModel.popToRoot()` / `close()` (see `Base/` above). Covered by `StackNavigationTests`; verified in the simulator that clearing the root's destination pops a whole stack in one animation.
-- **`Presentation.swift`** — `View.present(connection) { … }` (a sheet via `bindingModel`), `View.push(connection, enableBackButton:) { … }` (`navigationDestination` via `bindingModel`), `presentAsBinding(item:)` (a sheet for a `VM?` binding), and `customBackButton(enable:)`, a placeholder that returns the view unchanged. `present` and `push` also accept `Binding<CaseConnection>` (`$model.connections.x`). They're `View` extensions, so they chain after other modifiers. Dismissing or popping clears the parent's destination. These replaced ThirtyPlusPanel's `ModalPresentation.swift` helpers; `PresentAsSheetContainer` and `toBool()` were dropped. `Binding.isEqual(to:)` selection helpers moved to `Binding+Extensions.swift`.
+- **`Presentation.swift`** — `View.present(connection) { … }` (a sheet via `bindingModel`), `View.push(connection, enableBackButton:) { … }` (`navigationDestination` via `bindingModel`), `presentAsBinding(item:)` (a sheet for a `VM?` binding), and `customBackButton(enable:)`, a placeholder that returns the view unchanged. `present` and `push` also accept `Binding<CaseConnection>` (`$model.connections.x`). They're `View` extensions, so they chain after other modifiers. Dismissing or popping clears the parent's destination. These replaced ThirtyPlusPanel's `ModalPresentation.swift` helpers; `PresentAsSheetContainer` and `toBool()` were dropped. `Binding.isEqual(to:)` selection helpers now live in RWLabsFoundation.
 - **`Route.swift`** — deep-link parsing: `Route(url:)` (for custom schemes the host is the first path segment, so `myapp://product/123` and `https://example.com/product/123` both give `/product/123`), `matches(pattern:) -> [String: String]?` with `:param` placeholders, `isMatch(_:)`, and `url(scheme:host:)` (standard `myapp://…` form, sorted query items). `FeatureRouter` was removed.
 - **`DeepLink.swift`** — opens any screen from a link: `model.openDeepLink(route) -> Bool` reads the path as one screen name per level.
   - A `Destination` enum gets `DeepLinkable` from the **`@DeepLinkable` macro**. Every case's name is its URL segment, and its payload is built with `State()`. `@DeepLink("name", params: ["query": "property"], skip:)` on a case renames it, copies query items into state properties (via `DeepLinkStep.assign(_:to:in:)`, which converts `String`/`Int`/`Double`/`Bool`/`UUID`/`LosslessStringConvertible` and their optionals), or leaves it out.
@@ -140,7 +140,7 @@ Ready-made service protocols and implementations. Apps register the ones they us
   - `model` also syncs eagerly when you read it.
   - `bindingModel` (a computed `Binding<To?>`, no longer implicitly unwrapped) clears the parent's `destination` when it's set to `nil`, for example when the user swipes a sheet down or pops back.
 - **Optional child states:** `.connect(state: \.filter, parent: parent)` takes a `WritableKeyPath<From.State, To.State?>` and returns `CaseConnection<From, To, To.State?>`. The child exists while the value is non-`nil`, and it has the same sync, `bindingModel` and `present`/`push` support as a case connection. `CaseConnection` reads and writes its payload through closures, so one class serves both enum cases and plain optionals; its `Case` parameter has no constraint. `OptionalConnection`, which stored a child ViewModel in state, was removed.
-- **`Async`** (`Extensions/Async.swift`) — `Async.main { }`, `Async.background { }`, `Async.after(_:) { }`.
+- **`Async`** (from RWLabsFoundation) — `Async.main { }`, `Async.background { }`, `Async.after(_:) { }`.
 
 ### DependencyInjection/ and PropertyWrappers/
 
@@ -168,15 +168,13 @@ Ready-made service protocols and implementations. Apps register the ones they us
   - `@Copyable`: `copy()`, falling back to `mutableCopy()`.
   - `@Atomic` and `@Validated` were removed: `@Atomic` wasn't safe for read-modify-write, and `@Validated` silently dropped writes.
 
-### Extensions/
+### Helpers from RWLabsFoundation
 
-(Renamed from the misspelled `Extentions`.)
+The old `Extensions/` folder moved to RWLabsFoundation, which this module re-exports. Change them there, not here:
 
-- `AnyOptional` / `Optional` — `isNil`, `exists`, and `String?.orEmpty` (`self ?? ""`). For collections: `nilOrEmpty`, `hasContent`, and `content` (which returns `nil` when the collection is empty). The old `String?.empty` / `Int?.empty` were removed; they ignored the value and always returned `""` / `-1`.
-- `Binding+Extensions`:
-  - `orDefault(_:)` turns any `Binding<T?>` into a `Binding<T>`. `orEmpty()` is the shorthand for `String?` (`""`), `Bool?` (`false`) and `Date?` (the current date while `nil`).
-  - `unwrap(...)` makes bindings to properties of optional reference objects. These are kept for future use; nothing calls them yet.
-  - `isPresent()` turns `Binding<T?>` into `Binding<Bool>`; `customAlert(item:)` uses it.
+- `AnyOptional` / `Optional` — `isNil`, `exists`, `String?.orEmpty`, and for collections `nilOrEmpty`, `hasContent` and `content`.
+- `Binding` — `orDefault(_:)`, `orEmpty()`, `unwrap(...)`, `isPresent()` (used by `customAlert(item:)`) and `isEqual(to:)`.
+- `Async` — `Async.main { }`, `Async.background { }`, `Async.after(_:) { }`.
 
 ## How the pieces fit together
 
