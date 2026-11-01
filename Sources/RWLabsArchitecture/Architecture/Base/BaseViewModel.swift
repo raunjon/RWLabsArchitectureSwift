@@ -25,7 +25,7 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
     @Published public var state: State
 
     /// App-provided error handler. Every app must register one before creating a ViewModel.
-    @Injected var errorService: ErrorService
+    @Injected public var errorService: ErrorService
 
     /// Subject behind `outputs`; emit through `sendOutput(_:)`
     public let outputSubject = PassthroughSubject<Output, Never>()
@@ -97,8 +97,7 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
     }
 
     /// Called by the view's `body` each time it appears, so it may run many times
-    open func onAppear() {
-    }
+    open func onAppear() { }
 
     /// Subscribes `handler` to `outputs` for the model's lifetime
     @discardableResult
