@@ -28,8 +28,9 @@ Every screen is a **model** (what the screen knows and does) plus a **view** (ho
 13. [Storage and property wrappers](#storage-and-property-wrappers)
 14. [Built-in services](#built-in-services)
 15. [Testing](#testing)
-16. [Things to know](#things-to-know)
-17. [Further reading](#further-reading)
+16. [Design decisions](#design-decisions)
+17. [Things to know](#things-to-know)
+18. [Further reading](#further-reading)
 
 ---
 
@@ -104,7 +105,7 @@ final class CounterModel: ComponentModel<CounterModel> {
 }
 
 struct CounterView: ComponentView {
-    @ObservedObject var model: CounterModel
+    var model: CounterModel
 
     var content: some View {
         VStack {
@@ -123,7 +124,7 @@ Things to notice:
 - **`model.count`** reads `model.state.count`. Every state property can be read (and written) this way.
 - **`button(_:label:)`** is a `Button` that sends an action.
 - **`content`** instead of `body`. `ComponentView` provides `body`, and calls the model's `onAppear()` when the view appears.
-- **`@ObservedObject`** when someone else owns the model (a parent or a connection). Use `@StateObject` when the view creates and owns it.
+- **`var model`** when someone else owns the model (a parent or a connection). Models are `Observable`, so a plain property is enough: the view updates when a state property it reads changes. Use `@Bindable var model` when the view needs `$model…` (for example `.push($model.connections.detail)`), and `@State` when the view creates and owns it.
 
 ---
 
@@ -140,7 +141,7 @@ struct AppErrorService: ErrorService {
 
 @main
 struct MyApp: App {
-    @StateObject private var appModel: AppModel
+    @State private var appModel: AppModel
 
     init() {
         AppCoordinator.shared.onConfigure = {
@@ -150,7 +151,7 @@ struct MyApp: App {
             // …everything else the app uses
         }
         AppCoordinator.shared.configureIfNeeded()   // registers, checks ErrorService, starts services
-        _appModel = StateObject(wrappedValue: AppModel(initialState: .init()))
+        _appModel = State(initialValue: AppModel(initialState: .init()))
     }
 
     var body: some Scene {
@@ -275,7 +276,7 @@ Navigation is `state.destination`. The view binds each connection to a presentat
 
 ```swift
 struct ProfileView: ComponentView {
-    @ObservedObject var model: ProfileModel
+    var model: ProfileModel
 
     var content: some View {
         VStack {
@@ -366,7 +367,7 @@ final class AppModel: ComponentModel<AppModel> {
 }
 
 struct AppView: ComponentView {
-    @ObservedObject var model: AppModel
+    var model: AppModel
 
     var content: some View {
         switch model.flow {
@@ -398,7 +399,7 @@ final class MainTabModel: ComponentModel<MainTabModel> {
 }
 
 struct MainTabView: ComponentView {
-    @ObservedObject var model: MainTabModel
+    var model: MainTabModel
 
     var content: some View {
         TabView(selection: model.binding(\.selectedTab)) {
@@ -603,8 +604,51 @@ xcodebuild test -scheme RWLabsArchitecture -destination 'platform=iOS Simulator,
 
 ---
 
+## Design decisions
+
+Why the library looks the way it does, and what each choice costs.
+
+### Why not TCA, and why not plain MVVM?
+
+Plain MVVM (an `@Observable` class per screen) leaves navigation, parent ↔ child communication and deep links to each app, and that's where codebases drift: every screen ends up presenting its children in its own way. [The Composable Architecture](https://github.com/pointfreeco/swift-composable-architecture) solves this thoroughly, with reducers, a single store and effects, but it asks a team to learn its whole vocabulary and to route every change through it.
+
+This library sits in between. Each screen is still a familiar class with `state` and `send(_:)`, but the parts that usually drift (navigation, child wiring, deep links) are fixed: navigation is a value in `state`, a child is created from the state its parent holds, and a link is opened by walking that state. It borrows `swift-case-paths` from Point-Free for enum destinations.
+
+What it gives up compared with TCA: there's no single store to snapshot, effects aren't modelled as values, and there's no exhaustive `TestStore`. Tests assert on state after calling `send(_:)`.
+
+### Navigation is state
+
+`state.destination` *is* the navigation. Setting it presents, clearing it dismisses, and SwiftUI's own pop or swipe-down clears it again through the connection's binding. There are no coordinators or routers to keep in sync with what's on screen. That's also why deep links need no special support from each screen: opening a link means setting a chain of destinations.
+
+### State holds data, connections hold models
+
+A parent's state holds the child's *state*, never the child model. A connection builds the child from that state and keeps the two in sync in both directions. State stays a plain value, so it can be copied, seeded (`.editor(.init(name: "Ada"))`), deep-linked and restored, and a child can't outlive the state that describes it.
+
+### Observation for state, Combine for outputs
+
+Models are `Observable`. `state` is the one tracked property, through a hand-written `ObservationRegistrar`, so a view redraws only when a state property it read changes, not on every change to the model. Outputs (`.saved`, `.loggedOut`) are one-off events rather than values, which Observation doesn't model, so they stay on a Combine `PassthroughSubject`.
+
+### How syncing works, and why it waits a turn
+
+Connections watch both sides with `withObservationTracking`. It reports a change once, just *before* the value is stored, so a connection registers again in every callback and reads the new value on the next main-queue turn. To prevent echo loops it uses flags rather than comparing states, which is why states never need to be `Equatable`. The cost is that a child edit reaches the parent one turn later, which tests have to allow for (see [Testing](#testing)). A connection's `model` and the deep-link walker read the parent's state directly, so rendering and links never see a stale child.
+
+### The runtime techniques, and why
+
+- **`Mirror`** finds a model's connections so they can be handed their parent, and gives destinations a default `id` (the case name). `@Component` touches every `lazy var` connection so `Mirror` can see it.
+- **`objc_setAssociatedObject`** lets a directly connected child (a tab) own the link that syncs it, so a `lazy var home: HomeModel` needs nothing else to hold onto.
+- **Macros** (`@Component`, `@DeepLinkable`) write the conformances and boilerplate these patterns need, so a screen only declares what's specific to it.
+
+Each one is internal and covered by tests: syncing, leaks (`ConnectionLifecycleTests`), and deep links that stop early (`DeepLinkWarningTests`).
+
+### An app must provide an `ErrorService`
+
+The library registers nothing by default. Every model forwards errors to an injected `ErrorService`, and `AppCoordinator.configure()` stops with a clear message if none is registered. That makes error handling a decision each app has to make, rather than a default `print` nobody replaces.
+
+---
+
 ## Things to know
 
+- **Only `state` is observed.** A stored property you add to a model (outside `state`) doesn't update views; keep anything the view shows in `state`.
 - **Inside a model, write `state.x = …` (or `self.x = …`)**, not a bare `x = …`. Reading `model.x` from outside works through dynamic member lookup, but Swift only uses that when there's an explicit receiver.
 - **State holds data, never models.** Put the child's *state* in your state and let a connection create the model.
 - **Destinations compare by case.** `.detail(a) == .detail(b)` is `true`, so states don't have to be `Equatable`. Override `id` if two values of the same case must differ.

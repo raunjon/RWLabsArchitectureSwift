@@ -128,9 +128,9 @@ The old `OptionalConnection`, which stored the child ViewModel itself in state, 
 
 ## How Syncing Works
 
-Both direct and case connections observe `objectWillChange` on the parent and on the child. That publisher fires *before* a value changes, so each side reads the new value on the next main-queue turn.
+Both direct and case connections observe the parent's and the child's `state` with Observation (`withObservationTracking`, wrapped in an internal `StateObserver` that registers again after every change). Observation reports a change *before* the value is stored, so each side reads the new value on the next main-queue turn.
 
-- **No echo loops:** writing one side fires the other side's `objectWillChange`. A flag set during each write makes the observer ignore its own echo, so one edit causes exactly one change on each side.
+- **No echo loops:** writing one side notifies the other side's observer. A flag set during each write makes the observer ignore its own echo, so one edit causes exactly one change on each side.
 - **No lost typing:** while a child edit is still waiting to be copied to the parent, the parent's older value isn't pushed back into the child. An unrelated parent change can't overwrite what the user just typed.
 - **States need no equality:** `ViewModelState` isn't `Equatable`, and nothing in the sync compares states.
 

@@ -18,7 +18,7 @@ import SwiftUI
 ///
 /// ```swift
 /// struct CounterView: ComponentView {
-///     @ObservedObject var model: CounterModel
+///     var model: CounterModel
 ///
 ///     var content: some View {
 ///         button(.increment) { Text("Count: \(model.count)") }
@@ -82,6 +82,7 @@ public extension RoutableView {
 
 // MARK: - Destination Presentation
 
+#if os(iOS)
 extension View {
     /// Presents `dest` using its `presentationStyle`.
     ///
@@ -106,6 +107,7 @@ extension View {
             .customAlert(item: dest.matching([.customAlert]), destination: destination)
     }
 }
+#endif
 
 private extension Binding {
     /// The wrapped destination while its style is in `styles`, otherwise `nil`.

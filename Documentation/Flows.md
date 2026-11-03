@@ -85,7 +85,7 @@ The view is an exhaustive switch:
 
 ```swift
 struct AppView: ComponentView {
-    @ObservedObject var model: AppViewModel
+    var model: AppViewModel
 
     var content: some View {
         switch model.flow {
@@ -141,7 +141,7 @@ final class MainTabViewModel: ComponentModel<MainTabViewModel> {
 }
 
 struct MainTabView: ComponentView {
-    @ObservedObject var model: MainTabViewModel
+    var model: MainTabViewModel
 
     var content: some View {
         TabView(selection: model.binding(\.selectedTab)) {
@@ -175,7 +175,7 @@ If an event starts several levels deep and threading it through each level gets 
 ```swift
 @main
 struct MyApp: App {
-    @StateObject private var appModel: AppViewModel
+    @State private var appModel: AppViewModel
 
     init() {
         AppCoordinator.shared.onConfigure = {
@@ -183,7 +183,7 @@ struct MyApp: App {
             DependencyContainer.shared.registerSingleton(ErrorService.self, instance: AppErrorService())
         }
         AppCoordinator.shared.configureIfNeeded()   // runs onConfigure, checks ErrorService, starts services
-        _appModel = StateObject(wrappedValue: AppViewModel(initialState: .init()))
+        _appModel = State(initialValue: AppViewModel(initialState: .init()))
     }
 
     var body: some Scene {

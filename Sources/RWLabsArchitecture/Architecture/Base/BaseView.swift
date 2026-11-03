@@ -19,7 +19,7 @@ import SwiftUI
 ///
 /// ```swift
 /// struct SettingsView: ComponentView {
-///     @ObservedObject var model: SettingsModel
+///     var model: SettingsModel
 ///
 ///     var content: some View {
 ///         Form {
@@ -40,8 +40,8 @@ public protocol BaseView: View {
     /// The content view type
     associatedtype Content: View
 
-    /// The ViewModel instance: `@ObservedObject` when a parent or connection
-    /// owns it, `@StateObject` when this view owns it
+    /// The ViewModel instance: a plain `var` when a parent or connection owns it,
+    /// `@Bindable` when the view needs `$model…`, `@State` when this view owns it
     var model: Model { get }
 
     /// The view's UI; `body` wraps it with lifecycle handling
