@@ -88,7 +88,7 @@ extension View {
     /// | Style | Modifier |
     /// |---|---|
     /// | `.push` | `.navigationDestination(item:)` (needs an enclosing `NavigationStack`) |
-    /// | `.fullScreen` | `.fullScreenCover(item:)` |
+    /// | `.fullScreen` | `.fullScreenCover(item:)` (a sheet on macOS) |
     /// | `.customAlert` | `.customAlert(item:)` |
     /// | everything else | `.sheet(item:)` |
     ///
@@ -99,11 +99,19 @@ extension View {
         _ dest: Binding<D?>,
         @ViewBuilder destination: @escaping (D) -> V
     ) -> some View {
+        #if os(macOS)
+        // macOS has no full-screen cover, so `.fullScreen` shares the sheet
+        self
+            .navigationDestination(item: dest.matching([.push]), destination: destination)
+            .sheet(item: dest.matching([.modal, .alert, .fullScreen]), content: destination)
+            .customAlert(item: dest.matching([.customAlert]), destination: destination)
+        #else
         self
             .navigationDestination(item: dest.matching([.push]), destination: destination)
             .sheet(item: dest.matching([.modal, .alert]), content: destination)
             .fullScreenCover(item: dest.matching([.fullScreen]), content: destination)
             .customAlert(item: dest.matching([.customAlert]), destination: destination)
+        #endif
     }
 }
 

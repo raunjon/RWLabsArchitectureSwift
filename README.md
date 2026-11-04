@@ -39,7 +39,7 @@ To see it running, open [Shelf](Examples/README.md), a small example app in `Exa
 
 | | |
 |---|---|
-| Platform | iOS 17+ |
+| Platform | iOS 17+, macOS 14+ |
 | Swift tools | 6.2 |
 | Dependencies | [swift-case-paths](https://github.com/pointfreeco/swift-case-paths) and [swift-syntax](https://github.com/swiftlang/swift-syntax) (for the macros), and [RWLabsFoundation](https://github.com/raunjon/RWLabsFoundation), which is re-exported, so `import RWLabsArchitecture` also brings in its Optional, Binding and Async helpers |
 
@@ -597,10 +597,11 @@ final class ProfileModelTests: XCTestCase {
 - **Assert on state**: navigation is `state.destination`, so "did it open the editor?" is a state check.
 - **Syncing between parent and child happens on the next main-queue turn.** Before asserting a child edit reached the parent, let the queue run once (`await Task.yield()` or a short `DispatchQueue.main.async` wait).
 
-The package's own tests run on the iOS Simulator:
+The package's own tests run on the iOS Simulator or on the Mac:
 
 ```bash
 xcodebuild test -scheme RWLabsArchitecture -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -skipMacroValidation
+xcodebuild test -scheme RWLabsArchitecture -destination 'platform=macOS' -skipMacroValidation
 ```
 
 ---
@@ -639,6 +640,6 @@ Sources/RWLabsArchitecture/Architecture/
 ├── PropertyWrappers/      @Injected…, @Preference, @StoredObject, state wrappers
 └── Services/              Logger, Validation, Analytics
 Sources/RWLabsArchitectureMacros/   @Component, @DeepLinkable, @DeepLink
-Tests/RWLabsArchitectureTests/      XCTest suite (iOS Simulator)
+Tests/RWLabsArchitectureTests/      XCTest suite (iOS Simulator or macOS)
 Examples/                           Shelf, a runnable example app (see Examples/README.md)
 ```

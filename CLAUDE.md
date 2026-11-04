@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - App-level flows (login / onboarding / main, tab bars) expressed as ordinary ViewModels. There is no separate flow system.
 - A dependency injection container plus property wrappers
 
-It is consumed as a local package (`.package(path: "../RWLabsArchitecture")`) by app targets; it is not an app itself. Platforms in `Package.swift`: iOS 17, macOS 12 (swift-tools 6.2).
+It is consumed as a local package (`.package(path: "../RWLabsArchitecture")`) by app targets; it is not an app itself. Platforms in `Package.swift`: iOS 17, macOS 14 (swift-tools 6.2).
 
 Dependencies: `swift-case-paths` (tracking `main`), used for `@CasePathable` destination enums, `swift-syntax` (`509.0.0..<700.0.0`), used by the macro target, and `RWLabsFoundation` (`from: "1.0.0"`), which provides the Optional, Binding and Async helpers. The module `@_exported import`s `RWLabsFoundation`, so apps get those helpers with `import RWLabsArchitecture`.
 
@@ -34,20 +34,22 @@ Dependencies: `swift-case-paths` (tracking `main`), used for `@CasePathable` des
 
 ## Building
 
-The code uses UIKit (`UIWindow` in the custom-alert overlay) and iOS 16/17 SwiftUI APIs, so it only compiles for iOS. A plain `swift build` builds for the macOS host and fails. Build for the iOS Simulator instead:
+The package builds for iOS and macOS. The only platform-specific code is the custom-alert overlay (a `UIWindow` on iOS, an AppKit child window on macOS, chosen with `#if canImport(UIKit)`) and `showDestination`, which shows `.fullScreen` as a sheet on macOS. Build for either:
 
 ```bash
 xcodebuild -scheme RWLabsArchitecture -destination 'generic/platform=iOS Simulator' -skipMacroValidation build
+xcodebuild -scheme RWLabsArchitecture -destination 'platform=macOS' -skipMacroValidation build
 ```
 
-The package has a macro target, `Sources/RWLabsArchitectureMacros`, which provides `@Component` (plus the `@ComponentState`/`@ComponentDestination`/`@ComponentAction`/`@ComponentOutput`/`@ComponentConnections` it applies), `@DeepLinkable` and `@DeepLink`, and depends on `swift-syntax`. `-skipMacroValidation` stands in for Xcode's one-time "Trust & Enable" prompt. Macro behaviour is covered by functional tests (`ComponentMacroTests`, `DeepLinkMacroTests`) in the iOS test target. There are no `SwiftSyntaxMacrosTestSupport` expansion tests, because those have to run on macOS and the main target doesn't build for macOS.
+The package has a macro target, `Sources/RWLabsArchitectureMacros`, which provides `@Component` (plus the `@ComponentState`/`@ComponentDestination`/`@ComponentAction`/`@ComponentOutput`/`@ComponentConnections` it applies), `@DeepLinkable` and `@DeepLink`, and depends on `swift-syntax`. `-skipMacroValidation` stands in for Xcode's one-time "Trust & Enable" prompt. Macro behaviour is covered by functional tests (`ComponentMacroTests`, `DeepLinkMacroTests`) in the test target. There are no `SwiftSyntaxMacrosTestSupport` expansion tests yet; now that the main target builds for macOS, they could be added.
 
 `RWLabsExamples.xcodeproj` (in the sibling `RWLabsExamples` folder) does not use this checkout. It references its own separate copy at `RWLabsExamples/Libraries/RWLabsArchitecture`, so edits made here don't show up there until that copy is synced.
 
-There is a small test target, `Tests/RWLabsArchitectureTests` (XCTest). Run it on an iOS Simulator:
+There is a small test target, `Tests/RWLabsArchitectureTests` (XCTest). It runs on an iOS Simulator or on the Mac:
 
 ```bash
 xcodebuild test -scheme RWLabsArchitecture -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -skipMacroValidation
+xcodebuild test -scheme RWLabsArchitecture -destination 'platform=macOS' -skipMacroValidation
 ```
 
 It currently covers `CaseConnection`'s two-way state sync, `DependencyContainer`, the `@Injected` wrappers, the service lifecycle (`AppCoordinator` + `startServices`/`stopServices`), the logger, validation, the Foundation helpers it re-exports, `Route`, deep links, the presentation helpers, and the storage and state wrappers. Tests that create a `BaseViewModel` must register an `ErrorService` in `setUp`.
@@ -75,7 +77,7 @@ Everything lives under `Sources/RWLabsArchitecture/Architecture/`.
   - `Editable<Item>` holds `original` (`private(set)`, changed only by `commit`) and `draft` (bind fields to it), with `revert()`, `commit()` and `commit(_ saved:)`. It has `isModified` when `Item: Equatable` (changing a value back isn't a modification), `id` when `Item: Identifiable`, and is `Equatable`/`Hashable`/`Codable`/`Sendable` when `Item` is.
   - `ItemEditingState` (a `ViewModelState` with `var item: Editable<Item>`, `Item: Equatable`) gives the model `isModified`, `revert()`, `commit(_ saved: Item? = nil)` and `binding(draft: \.name)`. For a screen editing several items, use `Editable` properties directly.
   - Saving stays the app's: `perform { try await api.save(draft) } then: { commit($0) }`.
-- **`CustomAlert.swift`** — `customAlert(isPresented:dismissOnBackgroundTap:content:)` and `customAlert(item:dismissOnBackgroundTap:destination:)`. The alert is hosted in its own `UIWindow` above the app (made key, VoiceOver-modal), over a dimmed background, and animates in and out the same way whether it's dismissed by a background tap or by clearing the binding in code. Things to know:
+- **`CustomAlert.swift`** — `customAlert(isPresented:dismissOnBackgroundTap:content:)` and `customAlert(item:dismissOnBackgroundTap:destination:)`. The alert is hosted in its own window: on iOS a `UIWindow` above the app (made key, VoiceOver-modal), on macOS a borderless child window covering the content of the window it was shown from (made key, resized with it). It sits over a dimmed background, and animates in and out the same way whether it's dismissed by a background tap or by clearing the binding in code. Things to know:
   - It doesn't inherit the presenting view's environment, so pass data through the model.
   - `@Environment(\.dismiss)` does nothing inside it; clear the binding to close it.
   - An alert whose binding is already set when the view appears is shown.
@@ -88,7 +90,7 @@ Everything lives under `Sources/RWLabsArchitecture/Architecture/`.
   - `ComponentView` — **the view protocol to use.** Its `body` is `BaseView`'s (`content.onAppear { model.onAppear() }`), and it adds `button(_ action:label:)`, which renders `label` and sends the action on tap.
   - `View.onOutput(of: model) { output in … }` — lets a view react to its own model's outputs (a wrapper around `onReceive(model.outputs)`). Parents normally get a child's outputs through its connection instead.
   - `RoutableView` — `body` wraps `content` in a `NavigationStack`. Not used in the default pattern; the host wraps navigation roots in `NavigationStack` instead.
-  - `View.showDestination(_ dest: Binding<D?>, destination:)` where `D: RouteDestinationPresentable`. It always attaches `.navigationDestination(item:)` (`.push`), `.fullScreenCover(item:)` (`.fullScreen`), `.customAlert(item:)` (`.customAlert`), and `.sheet(item:)` (everything else). Each gets a binding filtered to its style, so view identity stays stable. It works with a `CaseConnection.bindingModel` (the child ViewModel must conform to `RouteDestinationPresentable`) or with the destination enum via `model.binding(\.destination)`.
+  - `View.showDestination(_ dest: Binding<D?>, destination:)` where `D: RouteDestinationPresentable`. It always attaches `.navigationDestination(item:)` (`.push`), `.fullScreenCover(item:)` (`.fullScreen`; on macOS it goes to the sheet), `.customAlert(item:)` (`.customAlert`), and `.sheet(item:)` (everything else). Each gets a binding filtered to its style, so view identity stays stable. It works with a `CaseConnection.bindingModel` (the child ViewModel must conform to `RouteDestinationPresentable`) or with the destination enum via `model.binding(\.destination)`.
 - **`AppCoordinator`** — a `@MainActor` singleton (`AppCoordinator.shared`, an `ObservableObject`):
   - **It registers nothing.** The app registers every dependency, including the required `ErrorService`, in `onConfigure`.
   - `configure()` runs `onConfigure?()`, stops with a clear `precondition` message if no `ErrorService` is registered, calls `DependencyContainer.shared.startServices()`, and sets `isConfigured = true`.

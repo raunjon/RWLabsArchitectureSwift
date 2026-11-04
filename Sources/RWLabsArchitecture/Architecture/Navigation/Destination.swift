@@ -57,7 +57,7 @@ public enum PresentationStyle: String, Codable {
     /// A sheet (`.sheet(item:)`)
     case modal
 
-    /// A full-screen cover (`.fullScreenCover(item:)`)
+    /// A full-screen cover (`.fullScreenCover(item:)`); a sheet on macOS
     case fullScreen
 
     /// A custom alert overlay in its own window (`.customAlert(item:)`)
