@@ -6,6 +6,7 @@
 //
 
 import Combine
+import Observation
 
 // MARK: - ViewModelState
 
@@ -85,13 +86,13 @@ public protocol ViewModel: StateComponent, Identifiable, Equatable, Hashable whe
 
 // MARK: - StateComponent
 
-/// An observable object with a `state` struct.
+/// An `Observable` object with a `state` struct. Views and connections observe `state`.
 ///
 /// Its properties can be read and written directly on the object, so
 /// `model.email` is `model.state.email`, and `model.isValid` works for a
 /// read-only computed property on the state.
 @dynamicMemberLookup
-public protocol StateComponent: ObservableObject {
+public protocol StateComponent: AnyObject, Observable {
     associatedtype State
 
     /// The current state

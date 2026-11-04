@@ -44,7 +44,7 @@ final class PresentingModel: ComponentModel<PresentingModel> {
 /// Compile check: the helpers chain on any view, with or without `$`
 @MainActor
 private struct PresentingView: View {
-    @ObservedObject var model: PresentingModel
+    @Bindable var model: PresentingModel
     var body: some View {
         NavigationStack {
             Text("x")

@@ -1,5 +1,4 @@
 import XCTest
-import Combine
 import CasePaths
 @testable import RWLabsArchitecture
 
@@ -89,14 +88,14 @@ final class CaseConnectionSyncTests: XCTestCase {
 
     func testNoSyncLoop() async throws {
         let (parent, child) = try await makeActive(name: "a")
-        var parentChanges = 0
-        var childChanges = 0
-        let p = parent.objectWillChange.sink { _ in parentChanges += 1 }
-        let c = child.objectWillChange.sink { _ in childChanges += 1 }
+        let parentChanges = ChangeCounter()
+        let childChanges = ChangeCounter()
+        let p = StateObserver(parent) { parentChanges.count += 1 }
+        let c = StateObserver(child) { childChanges.count += 1 }
         child.send(.rename("b"))
         await drainMainQueue(20)
-        XCTAssertEqual(childChanges, 1, "child should change once (the edit)")
-        XCTAssertEqual(parentChanges, 1, "parent should change once (the sync)")
+        XCTAssertEqual(childChanges.count, 1, "child should change once (the edit)")
+        XCTAssertEqual(parentChanges.count, 1, "parent should change once (the sync)")
         _ = (p, c)
     }
 

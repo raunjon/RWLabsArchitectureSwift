@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - App-level flows (login / onboarding / main, tab bars) expressed as ordinary ViewModels. There is no separate flow system.
 - A dependency injection container plus property wrappers
 
-It is consumed as a local package (`.package(path: "../RWLabsArchitecture")`) by app targets; it is not an app itself. Platforms in `Package.swift`: iOS 17, macOS 12 (swift-tools 6.2).
+It is consumed as a local package (`.package(path: "../RWLabsArchitecture")`) by app targets; it is not an app itself. Platforms in `Package.swift`: iOS 17, macOS 14 (swift-tools 6.2; Observation needs macOS 14, though the package only builds for iOS).
 
 Dependencies: `swift-case-paths` (tracking `main`), used for `@CasePathable` destination enums, `swift-syntax` (`509.0.0..<700.0.0`), used by the macro target, and `RWLabsFoundation` (`from: "1.0.0"`), which provides the Optional, Binding and Async helpers. The module `@_exported import`s `RWLabsFoundation`, so apps get those helpers with `import RWLabsArchitecture`.
 
@@ -29,7 +29,7 @@ Dependencies: `swift-case-paths` (tracking `main`), used for `@CasePathable` des
   - The class gets `ComponentTypes`, which `ComponentModel<X>` needs.
   - Anything declared by hand wins. A macro can't write a superclass, which is why the header names the model and `Connections` inherits from the generated `ConnectionsBase`.
   - The module `@_exported import`s `CasePaths`, so `@CasePathable` resolves without the app importing it.
-- A `ComponentView` declares its model as `@ObservedObject var model` when a parent or connection owns it (the usual case for child screens), or `@StateObject var model` when the view owns it. `BaseView` only requires `var model: Model { get }`, so either works, and so does a plain `let`.
+- Models are `Observable` (Observation, not Combine's `ObservableObject`). A `ComponentView` declares its model as a plain `var model` when a parent or connection owns it (the usual case for child screens), `@Bindable var model` when it needs `$model…` (`.push($model.connections.x)`), or `@State` when the view owns it. `BaseView` only requires `var model: Model { get }`.
 - `ComponentView` doesn't add a `NavigationStack`. The view that **hosts** a navigation root wraps it: the tab bar does `NavigationStack { HomeView(model: …) }`, and the root flow switch does the same for a flow that pushes. Don't make one view conform to both `ComponentView` and `RoutableView`. It compiles, but both provide a default `body`, so which one you get isn't obvious.
 
 ## Building
@@ -59,7 +59,8 @@ Everything lives under `Sources/RWLabsArchitecture/Architecture/`.
 ### Base/
 
 - **`BaseViewModel<State, Action, Output>`** (`BaseViewModel.swift`) — the `@MainActor open class` underneath `ComponentModel`. It conforms to `ViewModel` (which includes `StateComponent`).
-  - `@Published var state`, `id: UUID` (equality and hashing use only `id`), `required init(initialState:)`.
+  - `var state`, observed through a hand-written `ObservationRegistrar` (get / set / `_modify`), so `state` is the only tracked property: a stored property a subclass adds doesn't update views. Also `id: UUID` (equality and hashing use only `id`), `required init(initialState:)`.
+  - Outputs stay on Combine (`PassthroughSubject`): Observation tracks values, not one-off events.
   - `send(_:)` must be overridden (the default calls `fatalError`). `onAppear()` is an open no-op.
   - Outputs: `sendOutput(_:)`, `outputs` (backed by `outputSubject`), `onOutput { }` (sinks into `cancellables`, returns `Self`), `store(_:)`. Connections subscribe to `outputs` with their own handler.
   - Loading and errors: `startLoading()`, `stopLoading()`, `updateLoading(to:)`, and `handleError(_:)`. `handleError` is `open`. It sets `state.error` **and forwards to the injected `ErrorService`**.
@@ -83,13 +84,14 @@ Everything lives under `Sources/RWLabsArchitecture/Architecture/`.
 
 ### Core/
 
-- **`ViewModelProtocol.swift`** — `ViewModelState` (`associatedtype Destination: ViewModelDestination` and required `isLoading`, `error`, and `destination: Destination?`; **not** `Equatable`/`Hashable`, so states can hold anything), `ViewModelAction`, `ViewModelOutput`, and `ViewModel` (`StateComponent & Identifiable & Equatable & Hashable where State: ViewModelState`, with `state`, `send`, `outputs`, `onAppear`, `onOutput`, `init(initialState:)`). `StateComponent` is `@dynamicMemberLookup`: `model.foo` reads or writes `model.state.foo`, and it provides the `updateState { }` default.
+- **`StateObserver.swift`** — internal. `StateObserver(model) { … }` calls the handler before each change to `model.state`, until cancelled or freed. It wraps `withObservationTracking` and registers again inside every callback, so changes in one turn are each reported. Connections and the no-loop tests use it in place of the old `objectWillChange` sinks.
+- **`ViewModelProtocol.swift`** — `ViewModelState` (`associatedtype Destination: ViewModelDestination` and required `isLoading`, `error`, and `destination: Destination?`; **not** `Equatable`/`Hashable`, so states can hold anything), `ViewModelAction`, `ViewModelOutput`, and `ViewModel` (`StateComponent & Identifiable & Equatable & Hashable where State: ViewModelState`, with `state`, `send`, `outputs`, `onAppear`, `onOutput`, `init(initialState:)`). `StateComponent` (`AnyObject & Observable`) is `@dynamicMemberLookup`: `model.foo` reads or writes `model.state.foo`, and it provides the `updateState { }` default.
 - **`ComponentView.swift`** (in `Base/`) — view protocols layered on `BaseView`, and destination presentation:
   - `ComponentView` — **the view protocol to use.** Its `body` is `BaseView`'s (`content.onAppear { model.onAppear() }`), and it adds `button(_ action:label:)`, which renders `label` and sends the action on tap.
   - `View.onOutput(of: model) { output in … }` — lets a view react to its own model's outputs (a wrapper around `onReceive(model.outputs)`). Parents normally get a child's outputs through its connection instead.
   - `RoutableView` — `body` wraps `content` in a `NavigationStack`. Not used in the default pattern; the host wraps navigation roots in `NavigationStack` instead.
   - `View.showDestination(_ dest: Binding<D?>, destination:)` where `D: RouteDestinationPresentable`. It always attaches `.navigationDestination(item:)` (`.push`), `.fullScreenCover(item:)` (`.fullScreen`), `.customAlert(item:)` (`.customAlert`), and `.sheet(item:)` (everything else). Each gets a binding filtered to its style, so view identity stays stable. It works with a `CaseConnection.bindingModel` (the child ViewModel must conform to `RouteDestinationPresentable`) or with the destination enum via `model.binding(\.destination)`.
-- **`AppCoordinator`** — a `@MainActor` singleton (`AppCoordinator.shared`, an `ObservableObject`):
+- **`AppCoordinator`** — a `@MainActor` singleton (`AppCoordinator.shared`, `@Observable`):
   - **It registers nothing.** The app registers every dependency, including the required `ErrorService`, in `onConfigure`.
   - `configure()` runs `onConfigure?()`, stops with a clear `precondition` message if no `ErrorService` is registered, calls `DependencyContainer.shared.startServices()`, and sets `isConfigured = true`.
   - `configureIfNeeded()` skips if already configured. `teardown()` calls `stopServices()` and resets `isConfigured`, which is `public private(set)`.
@@ -134,7 +136,7 @@ Ready-made service protocols and implementations. Apps register the ones they us
   - `.connect(from: parent, to: \State.childState) -> To` — for a **non-optional** `To.State` stored on the parent's state. It returns the bare child ViewModel. A private `DirectLink`, owned by the child (via `objc_setAssociatedObject`), holds parent and child **weakly**, delivers outputs, and syncs state **both ways**, using the same echo flags and pending-edit guard as `CaseConnection`.
   - `.connect(state: \.destination, case: \.someCase, parent: parent) -> CaseConnection<From, To, Case>` — for a child whose state is the payload of one case of a `@CasePathable` destination enum.
   - Also `model`, `bindingModel`, `clear()`, and dynamic member lookup into the child.
-- **`CaseConnection<From, To, Case>`** — observes the parent's `objectWillChange`, handling each change on the next main-queue turn. The two-way sync uses flags rather than state equality to stop parent ↔ child echo loops, and doesn't push parent state into the child while a child edit is still waiting to sync (covered by the tests):
+- **`CaseConnection<From, To, Case>`** — observes the parent's `state` through a `StateObserver`, handling each change on the next main-queue turn. The two-way sync uses flags rather than state equality to stop parent ↔ child echo loops, and doesn't push parent state into the child while a child edit is still waiting to sync (covered by the tests):
   - When the case matches, it creates the child as `To(initialState: payload)` (or reuses the cached one), sets its state, and syncs child state changes back into the enum case.
   - When `destination` becomes `nil` or moves to a different case, it deactivates and drops its cached child. Deactivation only clears the parent's `destination` if that destination is still this connection's case.
   - `model` also syncs eagerly when you read it.
@@ -208,7 +210,7 @@ final class ProfileViewModel: ComponentModel<ProfileViewModel> {
 
 // View
 struct ProfileView: ComponentView {
-    @ObservedObject var model: ProfileViewModel
+    var model: ProfileViewModel
     var content: some View {
         button(.editBio) { Text("Edit bio") }
             .sheet(item: model.connections.bioEditor.bindingModel) { BioEditorView(model: $0) }

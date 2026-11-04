@@ -6,6 +6,7 @@
 //
 
 import Combine
+import Observation
 import SwiftUI
 
 // MARK: - BaseViewModel
@@ -21,8 +22,29 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
     /// Identity; equality and hashing use only this
     public let id = UUID()
 
-    /// The model's state; views and connections observe it
-    @Published public var state: State
+    /// The model's state; views and connections observe it.
+    ///
+    /// Only `state` is observed: a stored property a subclass adds doesn't update views.
+    public var state: State {
+        get {
+            observationRegistrar.access(self, keyPath: \.state)
+            return _state
+        }
+        set {
+            observationRegistrar.withMutation(of: self, keyPath: \.state) {
+                _state = newValue
+            }
+        }
+        _modify {
+            observationRegistrar.access(self, keyPath: \.state)
+            observationRegistrar.willSet(self, keyPath: \.state)
+            defer { observationRegistrar.didSet(self, keyPath: \.state) }
+            yield &_state
+        }
+    }
+
+    private var _state: State
+    private let observationRegistrar = ObservationRegistrar()
 
     /// App-provided error handler. Every app must register one before creating a ViewModel.
     @Injected public var errorService: ErrorService
@@ -55,7 +77,7 @@ open class BaseViewModel<State: ViewModelState, Action: ViewModelAction, Output:
     }
 
     required public init(initialState: State) {
-        self.state = initialState
+        self._state = initialState
     }
 
     /// Handles an action; subclasses must override

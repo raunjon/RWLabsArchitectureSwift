@@ -148,9 +148,10 @@ private final class DirectLink<From: ViewModel, To: ViewModel> {
     private weak var parent: From?
     private weak var child: To?
     private let keyPath: WritableKeyPath<From.State, To.State>
-    private var cancellables = Set<AnyCancellable>()
+    private var outputCancellable: AnyCancellable?
+    private var observers: [StateObserver] = []
 
-    // Each push fires the other side's objectWillChange synchronously; these flags ignore that echo
+    // Each push notifies the other side's observer synchronously; these flags ignore that echo
     private var isPushingToChild = false
     private var isPushingToParent = false
     /// A child change is waiting to be copied to the parent; don't overwrite the child until it has been
@@ -162,24 +163,21 @@ private final class DirectLink<From: ViewModel, To: ViewModel> {
         self.keyPath = keyPath
 
         if let outputHandler {
-            child.outputs.sink(receiveValue: outputHandler).store(in: &cancellables)
+            outputCancellable = child.outputs.sink(receiveValue: outputHandler)
         }
 
-        child.objectWillChange
-            .sink { [weak self] _ in
+        observers = [
+            StateObserver(child) { [weak self] in
                 guard let self, !self.isPushingToChild else { return }
                 self.childSyncPending = true
-                // objectWillChange fires before the value changes; read it on the next turn
+                // The observer runs before the value changes; read it on the next turn
                 DispatchQueue.main.async { [weak self] in self?.pushChildToParent() }
-            }
-            .store(in: &cancellables)
-
-        parent.objectWillChange
-            .sink { [weak self] _ in
+            },
+            StateObserver(parent) { [weak self] in
                 guard let self, !self.isPushingToParent else { return }
                 DispatchQueue.main.async { [weak self] in self?.pushParentToChild() }
-            }
-            .store(in: &cancellables)
+            },
+        ]
     }
 
     private func pushChildToParent() {
@@ -227,11 +225,11 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case>: @MainAc
 
     /// How the view shows the child; set by `.push(_:)` and `.present(_:)`
     var presentationStyle: PresentationStyle?
-    private var stateCancellable: AnyCancellable?
-    private var childStateCancellable: AnyCancellable?
+    private var parentObserver: StateObserver?
+    private var childObserver: StateObserver?
     private var isActive = false
 
-    // Each push fires the other side's objectWillChange synchronously; these flags ignore that echo
+    // Each push notifies the other side's observer synchronously; these flags ignore that echo
     private var isPushingToChild = false
     private var isPushingToParent = false
     /// A child change is waiting to be copied to the parent; don't overwrite the child until it has been
@@ -346,13 +344,13 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case>: @MainAc
     }
 
     private func observe<P: ViewModel>(_ parent: P) {
-        stateCancellable = parent.objectWillChange
-            .sink { [weak self] _ in
-                // Ignore the echo of our own child → parent push
-                guard let self, !self.isPushingToParent else { return }
-                // objectWillChange fires before the value changes; read it on the next turn
-                DispatchQueue.main.async { [weak self] in self?.handleParentStateChange() }
-            }
+        parentObserver?.cancel()
+        parentObserver = StateObserver(parent) { [weak self] in
+            // Ignore the echo of our own child → parent push
+            guard let self, !self.isPushingToParent else { return }
+            // The observer runs before the value changes; read it on the next turn
+            DispatchQueue.main.async { [weak self] in self?.handleParentStateChange() }
+        }
         handleParentStateChange()
     }
 
@@ -390,19 +388,20 @@ public final class CaseConnection<From: ViewModel, To: ViewModel, Case>: @MainAc
         let child = connection.createOrGetViewModel(with: childState)
         child.state = childState
         attachLink(to: child)
-        childStateCancellable = child.objectWillChange
-            .sink { [weak self] _ in
-                // Ignore the echo of our own parent → child push
-                guard let self, !self.isPushingToChild else { return }
-                self.childSyncPending = true
-                // objectWillChange fires before the value changes; read it on the next turn
-                DispatchQueue.main.async { [weak self] in self?.pushToParent() }
-            }
+        childObserver?.cancel()
+        childObserver = StateObserver(child) { [weak self] in
+            // Ignore the echo of our own parent → child push
+            guard let self, !self.isPushingToChild else { return }
+            self.childSyncPending = true
+            // The observer runs before the value changes; read it on the next turn
+            DispatchQueue.main.async { [weak self] in self?.pushToParent() }
+        }
     }
 
     private func deactivate() {
         isActive = false
-        childStateCancellable?.cancel()
+        childObserver?.cancel()
+        childObserver = nil
         detachLink()
         connection.clear()
     }

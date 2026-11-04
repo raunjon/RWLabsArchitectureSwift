@@ -55,7 +55,7 @@ final class OptionalHostModel: ComponentModel<OptionalHostModel> {
 /// Compile check: the optional form works with the presentation helpers and inline `if let`
 @MainActor
 private struct OptionalHostView: View {
-    @ObservedObject var model: OptionalHostModel
+    @Bindable var model: OptionalHostModel
     var body: some View {
         VStack {
             if let child = model.connections.optionalDummy.model {

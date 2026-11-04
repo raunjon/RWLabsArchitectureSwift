@@ -1,5 +1,4 @@
 import XCTest
-import Combine
 import CasePaths
 @testable import RWLabsArchitecture
 
@@ -89,14 +88,14 @@ final class ConnectionLifecycleTests: XCTestCase {
     func testDirectSyncDoesNotLoop() async {
         let parent = LifecycleParent(initialState: .init())
         let tab = parent.connections.tab
-        var parentChanges = 0
-        var childChanges = 0
-        let p = parent.objectWillChange.sink { _ in parentChanges += 1 }
-        let c = tab.objectWillChange.sink { _ in childChanges += 1 }
+        let parentChanges = ChangeCounter()
+        let childChanges = ChangeCounter()
+        let p = StateObserver(parent) { parentChanges.count += 1 }
+        let c = StateObserver(tab) { childChanges.count += 1 }
         tab.send(.rename("once"))
         await drainMainQueue(20)
-        XCTAssertEqual(childChanges, 1)
-        XCTAssertEqual(parentChanges, 1)
+        XCTAssertEqual(childChanges.count, 1)
+        XCTAssertEqual(parentChanges.count, 1)
         _ = (p, c)
     }
 

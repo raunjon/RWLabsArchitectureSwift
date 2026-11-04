@@ -67,7 +67,7 @@ Bind each destination's connection to a presentation. The helpers work on any vi
 ```swift
 // The parent hosts this screen in a NavigationStack (tab bar or root flow)
 struct ProductListView: ComponentView {
-    @ObservedObject var model: ProductListModel
+    var model: ProductListModel
 
     var content: some View {
         List(model.products) { product in
@@ -87,7 +87,7 @@ struct ProductListView: ComponentView {
 | `.customAlert(item: connection.bindingModel) { … }` | A custom alert overlay | See §5 |
 | `.presentAsBinding(item: $optionalModel) { … }` | A sheet, for a `VM?` binding | |
 
-`push` and `present` also accept a binding to the connection (`$model.connections.detail`).
+`push` and `present` also accept a binding to the connection (`$model.connections.detail`, with the model held as `@Bindable var model`).
 
 Dismissing a sheet, popping back, or closing the alert clears the parent's `destination`. A destination that's already set when the view appears is shown.
 
@@ -139,7 +139,7 @@ SwiftUI handles a change within one `.sheet` modifier. Two separate `.sheet` mod
 | `RoutableView` | `NavigationStack { content }`. Not used in the default pattern, where the parent hosts navigation roots. Don't combine it with `ComponentView`. |
 | `BaseView` (+ `Tappable`) | The base of both |
 
-A view holds its model as `@ObservedObject` when a parent or connection owns it, or as `@StateObject` when the view owns it.
+Models are `Observable`, and a view updates when a state property it read in `body` changes. A view holds its model as a plain `var model` when a parent or connection owns it, as `@Bindable var model` when it needs `$model…` (`.push($model.connections.detail)`), and as `@State` when the view creates and owns it.
 
 ## 5. Custom Alerts
 

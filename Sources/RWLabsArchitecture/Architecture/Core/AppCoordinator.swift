@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Observation
 
 // MARK: - AppCoordinator
 
@@ -29,15 +30,16 @@ import Foundation
 /// }
 /// ```
 @MainActor
-public final class AppCoordinator: ObservableObject {
+@Observable
+public final class AppCoordinator {
     /// The shared coordinator
     public static let shared = AppCoordinator()
 
     /// `true` once `configure()` has run, until `teardown()`
-    @Published public private(set) var isConfigured = false
+    public private(set) var isConfigured = false
 
     /// The app's setup: register dependencies here
-    public var onConfigure: (() -> Void)?
+    @ObservationIgnored public var onConfigure: (() -> Void)?
 
     private init() {}
 
