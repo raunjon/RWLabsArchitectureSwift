@@ -191,7 +191,9 @@ private final class WindowOverlay {
     private var generation = 0
 
     func show<Content: View>(_ content: Content, dismissOnBackgroundTap: Bool, requestDismiss: @escaping () -> Void) {
-        guard let parent = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+        // Shown again before a hide finished: the overlay is still attached (and still key),
+        // so keep its parent rather than looking one up, which would find the overlay itself
+        guard let parent = parentWindow ?? Self.parentCandidate(excluding: window) else { return }
         generation += 1
 
         let window = self.window ?? Self.makeWindow()
@@ -251,6 +253,13 @@ private final class WindowOverlay {
     private func matchParentFrame() {
         guard let window, let parent = parentWindow else { return }
         window.setFrame(parent.convertToScreen(parent.contentLayoutRect), display: true)
+    }
+
+    /// The key window, else the main window, skipping `overlay` so it's never its own parent
+    private static func parentCandidate(excluding overlay: NSWindow?) -> NSWindow? {
+        [NSApp.keyWindow, NSApp.mainWindow]
+            .compactMap { $0 }
+            .first { $0 !== overlay }
     }
 
     private static func makeWindow() -> NSWindow {
