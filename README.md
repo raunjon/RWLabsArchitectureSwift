@@ -11,6 +11,8 @@ Every screen is a **model** (what the screen knows and does) plus a **view** (ho
 └──────────────┘   reads state     └───────────────┘                        └──────────────┘
 ```
 
+To see it running, open [Shelf](Examples/README.md), a small example app in `Examples/` that uses every piece described below.
+
 **Contents**
 
 1. [Requirements and installation](#requirements-and-installation)
@@ -638,4 +640,5 @@ Sources/RWLabsArchitecture/Architecture/
 └── Services/              Logger, Validation, Analytics
 Sources/RWLabsArchitectureMacros/   @Component, @DeepLinkable, @DeepLink
 Tests/RWLabsArchitectureTests/      XCTest suite (iOS Simulator)
+Examples/                           Shelf, a runnable example app (see Examples/README.md)
 ```
