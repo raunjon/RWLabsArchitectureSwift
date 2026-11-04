@@ -6,7 +6,11 @@
 //
 
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 
 // MARK: - Public API
 
@@ -103,6 +107,7 @@ private final class OverlayPresentation {
     var isVisible = false
 }
 
+#if canImport(UIKit)
 /// Owns the overlay window for one `customAlert` modifier.
 @MainActor
 private final class WindowOverlay {
@@ -173,6 +178,96 @@ private final class WindowOverlay {
             ?? scenes.first
     }
 }
+#else
+/// Owns the overlay window for one `customAlert` modifier: a borderless child window
+/// covering the content of the window the alert was shown from.
+@MainActor
+private final class WindowOverlay {
+    private var window: NSWindow?
+    private weak var parentWindow: NSWindow?
+    private var resizeObserver: NSObjectProtocol?
+    private let presentation = OverlayPresentation()
+    /// Bumped on every show, so a hide animation finishing late can't tear down a newer alert
+    private var generation = 0
+
+    func show<Content: View>(_ content: Content, dismissOnBackgroundTap: Bool, requestDismiss: @escaping () -> Void) {
+        guard let parent = NSApp.keyWindow ?? NSApp.mainWindow else { return }
+        generation += 1
+
+        let window = self.window ?? Self.makeWindow()
+        self.window = window
+        if parentWindow !== parent {
+            detachFromParent()
+            parent.addChildWindow(window, ordered: .above)
+            parentWindow = parent
+            resizeObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResizeNotification, object: parent, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.matchParentFrame() }
+            }
+        }
+
+        presentation.isVisible = false
+        window.contentView = NSHostingView(rootView: WindowOverlayView(
+            content: content,
+            presentation: presentation,
+            dismissOnBackgroundTap: dismissOnBackgroundTap,
+            requestDismiss: requestDismiss
+        ))
+        matchParentFrame()
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    func hide(animated: Bool = true) {
+        guard let window, window.isVisible else { return }
+        guard animated else {
+            tearDown()
+            return
+        }
+        let hidingGeneration = generation
+        withAnimation(.easeInOut(duration: 0.2)) {
+            presentation.isVisible = false
+        } completion: { [weak self] in
+            guard let self, self.generation == hidingGeneration else { return }
+            self.tearDown()
+        }
+    }
+
+    private func tearDown() {
+        let parent = parentWindow
+        window?.orderOut(nil)
+        window?.contentView = nil
+        detachFromParent()
+        parent?.makeKey()
+    }
+
+    private func detachFromParent() {
+        if let window { parentWindow?.removeChildWindow(window) }
+        if let resizeObserver { NotificationCenter.default.removeObserver(resizeObserver) }
+        resizeObserver = nil
+        parentWindow = nil
+    }
+
+    private func matchParentFrame() {
+        guard let window, let parent = parentWindow else { return }
+        window.setFrame(parent.convertToScreen(parent.contentLayoutRect), display: true)
+    }
+
+    private static func makeWindow() -> NSWindow {
+        let window = OverlayWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: true)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = false
+        window.isReleasedWhenClosed = false
+        return window
+    }
+}
+
+/// A borderless window that can take key status, so the alert's buttons and keyboard work
+private final class OverlayWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+}
+#endif
 
 // MARK: - Overlay View
 

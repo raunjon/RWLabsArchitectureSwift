@@ -121,7 +121,7 @@ content.showDestination(model.binding(\.destination)) { destination in
 |---|---|
 | `.push` | `.navigationDestination(item:)` |
 | `.modal` | `.sheet(item:)` |
-| `.fullScreen` | `.fullScreenCover(item:)` |
+| `.fullScreen` | `.fullScreenCover(item:)` (a sheet on macOS, which has no full-screen cover) |
 | `.customAlert` | `.customAlert(item:)` |
 | `.alert` | `.sheet(item:)` for now; use SwiftUI's `.alert` for system alert chrome |
 
