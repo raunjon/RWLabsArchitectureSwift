@@ -126,6 +126,18 @@ It behaves like a case connection, and its type is `CaseConnection<Parent, Filte
 
 The old `OptionalConnection`, which stored the child ViewModel itself in state, was removed. State holds only data, so it can be copied, synced and deep-linked. Build any custom setup a child needs into its `init(initialState:)` or its `@Injected` dependencies.
 
+## Reading Children
+
+`model.children` reads children by connection name, typed:
+
+```swift
+model.children.editor     // EditorModel? — same as model.connections.editor.model
+model.children.filter     // FilterModel? — an optional connection
+model.children.home       // HomeModel   — a direct child
+```
+
+Any model that adopts `HasConnections` has it, which includes every `@Component` model with a `Connections` class. Reading a case or optional child syncs with the parent first, just like `model`. For `present`, `push` and `bindingModel` you still need the connection itself (`model.connections.editor`). Because it's a real member, `model.children` wins over a `children` property in the model's state; reach that one with `model.state.children`.
+
 ## How Syncing Works
 
 Both direct and case connections observe `objectWillChange` on the parent and on the child. That publisher fires *before* a value changes, so each side reads the new value on the next main-queue turn.

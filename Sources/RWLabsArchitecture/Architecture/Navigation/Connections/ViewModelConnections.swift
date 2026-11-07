@@ -78,3 +78,39 @@ public protocol HasConnections: AnyObject {
     /// The connections instance managing child ViewModels
     var connections: ConnectionsType { get }
 }
+
+extension HasConnections where Self: ViewModel {
+    /// Typed access to the children: `model.children.editor` reads `model.connections.editor.model`.
+    public var children: ConnectedChildren<ConnectionsType> {
+        ConnectedChildren(connections: connections)
+    }
+}
+
+// MARK: - ConnectedChildren
+
+/// The children a model's connections hold, looked up by connection name.
+///
+/// ```swift
+/// model.children.editor   // EditorModel?, while the destination is .editor
+/// model.children.home     // HomeModel, a direct child
+/// ```
+///
+/// Reading a case or optional connection's child syncs it with the parent first, like `model`.
+/// For `present`, `push` and `bindingModel`, use the connection itself (`model.connections.editor`).
+@MainActor
+@dynamicMemberLookup
+public struct ConnectedChildren<Connections: AnyObject> {
+    let connections: Connections
+
+    /// The child of a case or optional connection while the parent holds its state, otherwise `nil`
+    public subscript<From: ViewModel, To: ViewModel, Case>(
+        dynamicMember keyPath: KeyPath<Connections, CaseConnection<From, To, Case>>
+    ) -> To? {
+        connections[keyPath: keyPath].model
+    }
+
+    /// A directly connected child
+    public subscript<To: ViewModel>(dynamicMember keyPath: KeyPath<Connections, To>) -> To {
+        connections[keyPath: keyPath]
+    }
+}
