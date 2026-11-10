@@ -26,6 +26,32 @@ import Foundation
 open class ComponentModel<Model: ComponentTypes>: BaseViewModel<Model.State, Model.Action, Model.Output> {
 }
 
+// MARK: - Connections through the base type
+
+/// A view can hold its model as `ComponentModel<EditorModel>` instead of `EditorModel`, so it
+/// sees state and actions but not the model's own members. These two keep the connections
+/// reachable that way: `model.children.preview` and `model.connections.preview` work on either type.
+extension ComponentModel where Model: HasConnections {
+    /// The model's `Connections`, for `push`, `present` and `bindingModel`
+    public var connections: Model.ConnectionsType {
+        concreteModel.connections
+    }
+
+    /// Typed access to the children by connection name, as on the model itself
+    public var children: ConnectedChildren<Model.ConnectionsType> {
+        ConnectedChildren(connections: concreteModel.connections)
+    }
+
+    /// `self` as the subclass. A `ComponentModel<Model>` is always a `Model`, since every
+    /// component passes itself as the type parameter.
+    private var concreteModel: Model {
+        guard let model = self as? Model else {
+            preconditionFailure("\(type(of: self)) isn't a \(Model.self); a component must pass itself as ComponentModel's type parameter")
+        }
+        return model
+    }
+}
+
 /// Names a model's `State`, `Action` and `Output`, so `ComponentModel` can take the model itself
 /// as its only type parameter. `@Component` adds the conformance.
 public protocol ComponentTypes {

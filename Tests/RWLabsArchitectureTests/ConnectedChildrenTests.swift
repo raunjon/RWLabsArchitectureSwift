@@ -43,4 +43,26 @@ final class ConnectedChildrenTests: XCTestCase {
         parent.state.optionalLeaf = nil
         XCTAssertNil(parent.children.optionalLeaf)
     }
+
+    // A view that holds `ComponentModel<MacroParentModel>` reaches the same connections
+
+    func testBaseTypeReachesTheSameConnections() {
+        let parent = MacroParentModel(initialState: .init())
+        let base: ComponentModel<MacroParentModel> = parent
+        XCTAssertIdentical(base.connections, parent.connections)
+        XCTAssertIdentical(base.children.leaf, parent.connections.leaf)
+    }
+
+    func testBaseTypeCaseChildFollowsTheDestination() {
+        let parent = MacroParentModel(initialState: .init())
+        let base: ComponentModel<MacroParentModel> = parent
+        XCTAssertNil(base.children.detail)
+
+        base.send(.open)
+        XCTAssertEqual(base.children.detail?.count, 7)
+        XCTAssertIdentical(base.children.detail, parent.connections.detail.model)
+
+        base.dismiss()
+        XCTAssertNil(base.children.detail)
+    }
 }
