@@ -136,7 +136,7 @@ model.children.filter     // FilterModel? — an optional connection
 model.children.home       // HomeModel   — a direct child
 ```
 
-Any model that adopts `HasConnections` has it, which includes every `@Component` model with a `Connections` class. A view that holds its model as `ComponentModel<EditorModel>` gets `model.children` and `model.connections` too, so it can stay on the base type. Reading a case or optional child syncs with the parent first, just like `model`. For `present`, `push` and `bindingModel` you still need the connection itself (`model.connections.editor`). Because it's a real member, `model.children` wins over a `children` property in the model's state; reach that one with `model.state.children`.
+Any model that adopts `HasConnections` has it, which includes every `@Component` model with a `Connections` class. A view that holds its model as `ComponentModel<EditorModel>` gets `model.children` and `model.connections` too, so it can stay on the base type. Reading a case or optional child syncs with the parent first, just like `model`. Case and optional children can also be set, so `$model.children.editor` is a `Binding<EditorModel?>` for helpers that take one (it is `model.connections.editor.bindingModel`); setting it to `nil` clears the parent's destination or optional state. For `present` and `push` you still pass the connection itself (`model.connections.editor`). Because it's a real member, `model.children` wins over a `children` property in the model's state; reach that one with `model.state.children`.
 
 ## How Syncing Works
 

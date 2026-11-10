@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 import RWLabsArchitecture
 
 private final class StubErrorService: ErrorService {
@@ -64,5 +65,29 @@ final class ConnectedChildrenTests: XCTestCase {
 
         base.dismiss()
         XCTAssertNil(base.children.detail)
+    }
+
+    // `$model.children.x` is a binding, as a view's `@ObservedObject` projects it
+
+    func testChildBindingThroughObservedObject() {
+        let parent = MacroParentModel(initialState: .init())
+        let observed = ObservedObject(wrappedValue: parent as ComponentModel<MacroParentModel>)
+        let detail: Binding<MacroLeafModel?> = observed.projectedValue.children.detail
+        XCTAssertNil(detail.wrappedValue)
+
+        parent.send(.open)
+        XCTAssertIdentical(detail.wrappedValue, parent.connections.detail.model)
+
+        detail.wrappedValue = nil                               // a sheet being dismissed
+        XCTAssertNil(parent.state.destination)
+    }
+
+    func testSettingAnOptionalChildToNilClearsItsState() {
+        let parent = MacroParentModel(initialState: .init())
+        parent.send(.add)
+        XCTAssertNotNil(parent.state.optionalLeaf)
+
+        parent.children.optionalLeaf = nil
+        XCTAssertNil(parent.state.optionalLeaf)
     }
 }

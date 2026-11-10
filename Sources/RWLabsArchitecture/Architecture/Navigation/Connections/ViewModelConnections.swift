@@ -82,7 +82,9 @@ public protocol HasConnections: AnyObject {
 extension HasConnections where Self: ViewModel {
     /// Typed access to the children: `model.children.editor` reads `model.connections.editor.model`.
     public var children: ConnectedChildren<ConnectionsType> {
-        ConnectedChildren(connections: connections)
+        get { ConnectedChildren(connections: connections) }
+        // Writing goes through the child's own setter; this one only makes `$model.children.x` a binding
+        set {}
     }
 }
 
@@ -96,7 +98,10 @@ extension HasConnections where Self: ViewModel {
 /// ```
 ///
 /// Reading a case or optional connection's child syncs it with the parent first, like `model`.
-/// For `present`, `push` and `bindingModel`, use the connection itself (`model.connections.editor`).
+/// Those children can also be set, so a view can bind to them: `$model.children.editor` is a
+/// `Binding<EditorModel?>`, the same as `model.connections.editor.bindingModel`, and setting it to
+/// `nil` (dismissing a sheet) clears the parent's destination or optional state.
+/// For `present` and `push`, use the connection itself (`model.connections.editor`).
 @MainActor
 @dynamicMemberLookup
 public struct ConnectedChildren<Connections: AnyObject> {
@@ -106,7 +111,9 @@ public struct ConnectedChildren<Connections: AnyObject> {
     public subscript<From: ViewModel, To: ViewModel, Case>(
         dynamicMember keyPath: KeyPath<Connections, CaseConnection<From, To, Case>>
     ) -> To? {
-        connections[keyPath: keyPath].model
+        get { connections[keyPath: keyPath].model }
+        // Goes through `bindingModel`, so setting `nil` clears the parent's state, as dismissing does
+        nonmutating set { connections[keyPath: keyPath].bindingModel.wrappedValue = newValue }
     }
 
     /// A directly connected child

@@ -39,7 +39,9 @@ extension ComponentModel where Model: HasConnections {
 
     /// Typed access to the children by connection name, as on the model itself
     public var children: ConnectedChildren<Model.ConnectionsType> {
-        ConnectedChildren(connections: concreteModel.connections)
+        get { ConnectedChildren(connections: concreteModel.connections) }
+        // Writing goes through the child's own setter; this one only makes `$model.children.x` a binding
+        set {}
     }
 
     /// `self` as the subclass. A `ComponentModel<Model>` is always a `Model`, since every
