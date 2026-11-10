@@ -90,4 +90,25 @@ final class ConnectedChildrenTests: XCTestCase {
         parent.children.optionalLeaf = nil
         XCTAssertNil(parent.state.optionalLeaf)
     }
+
+    // `push` and `present` take a child binding next to the connection overloads, unambiguously
+
+    func testPushAndPresentAcceptChildBindings() {
+        let view = ChildBindingView(model: MacroParentModel(initialState: .init()))
+        XCTAssertNotNil(view)
+    }
+}
+
+private struct ChildBindingView: View {
+    @ObservedObject var model: ComponentModel<MacroParentModel>
+
+    var body: some View {
+        NavigationStack {
+            Text("Parent")
+                .push($model.children.detail) { _ in Text("Detail") }
+                .present($model.children.optionalLeaf) { _ in Text("Sheet") }
+                .push(model.connections.detail) { _ in Text("Connection") }
+                .present(model.connections.optionalLeaf) { _ in Text("Connection sheet") }
+        }
+    }
 }

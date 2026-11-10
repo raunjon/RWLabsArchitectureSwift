@@ -65,6 +65,34 @@ public extension View {
 // MARK: - Optional Models
 
 public extension View {
+    /// Pushes the child while `model` holds one; popping back sets it to `nil`. Pass a child
+    /// binding, e.g. `$model.children.entries`, which clears the parent's destination on pop.
+    ///
+    /// ```swift
+    /// content.push($model.children.entries) { EntriesView(model: $0) }
+    /// ```
+    ///
+    /// The binding doesn't carry the connection, so the push isn't recorded on it and
+    /// `popToRoot()` stops at this screen. Use `push(model.connections.entries)` where that matters.
+    func push<Model: ViewModel, Destination: View>(
+        _ model: Binding<Model?>,
+        enableBackButton: Bool = true,
+        @ViewBuilder _ destination: @escaping (Model) -> Destination
+    ) -> some View {
+        navigationDestination(item: model) {
+            destination($0).customBackButton(enable: enableBackButton)
+        }
+    }
+
+    /// Presents the child as a sheet while `model` holds one; dismissing sets it to `nil`.
+    /// Pass a child binding, e.g. `$model.children.editor`.
+    func present<Model: ViewModel, Content: View>(
+        _ model: Binding<Model?>,
+        @ViewBuilder content: @escaping (Model) -> Content
+    ) -> some View {
+        sheet(item: model, content: content)
+    }
+
     /// Presents a sheet while `binding` holds a model; dismissing sets it to `nil`
     func presentAsBinding<T: ViewModel, Destination: View>(
         item binding: Binding<T?>,
